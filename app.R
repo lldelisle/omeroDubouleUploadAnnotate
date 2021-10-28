@@ -910,7 +910,8 @@ server <- function(input, output) {
   
   # If the user click on the debug mode
   # A lot of prints to the stderr
-  eventReactive(input$debugMode,{
+  observeEvent(input$debugMode,{
+    cat(file = stderr(), "DEBUG MODE")
     my.ome$debug.mode <- input$debugMode
   })
   
