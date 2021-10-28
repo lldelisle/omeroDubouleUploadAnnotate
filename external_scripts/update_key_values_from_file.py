@@ -64,7 +64,7 @@ def remove_MapAnnotations(conn, dtype, Id ):
 
 
 def readCSV(file, sep):
-    keyvalsdf = pd.read_csv(file, sep=sep)
+    keyvalsdf = pd.read_csv(file, sep=sep, dtype=str)
     if not 'id' in keyvalsdf:
         raise Exception("id much be part of the colnames")
     return(keyvalsdf)
@@ -72,9 +72,10 @@ def readCSV(file, sep):
 
 def set_all_key_values(df, username, password, host, port):
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
+        new_keys = []
         for i in df.index:
             my_dict = df.loc[i].to_dict()
-            my_image = conn.getObject("Image", my_dict['id'])
+            my_image = conn.getObject("Image", int(my_dict['id']))
             kv = {}
             for ann in my_image.listAnnotations():
                 if( isinstance(ann, omero.gateway.MapAnnotationWrapper) ):
@@ -88,24 +89,26 @@ def set_all_key_values(df, username, password, host, port):
             for key in my_dict:
                 if key in ['id', 'image.name']:
                     continue
-                if np.isnan(my_dict[key]):
+                if isinstance(my_dict[key], float) and np.isnan(my_dict[key]):
                     continue
                 if key in kv and my_dict[key] != kv[key]:
                     print(f"Changing {kv[key]} to {my_dict[key]} for {key} for {my_image.getName()}")
                     changed = True
                 if key not in kv:
+                    if key not in new_keys:
+                        print(f"Adding {key}.")
+                        new_keys.append(key)
                     changed = True
                 kv[key] = my_dict[key]
             if changed:
-                remove_MapAnnotations(conn, 'Image', my_dict['id'])
+                remove_MapAnnotations(conn, 'Image', int(my_dict['id']))
                 map_ann = omero.gateway.MapAnnotationWrapper(conn)
                 namespace = omero.constants.metadata.NSCLIENTMAPANNOTATION
                 map_ann.setNs(namespace)
                 # convert the dict to a list of lists
                 kv_list=[]
                 for k, v in kv.items():
-                    kv_list.append( [k,str(v)] )
-                print(kv_list)
+                    kv_list.append( [k,v] )
                 map_ann.setValue(kv_list)
                 map_ann.save()
                 my_image.linkAnnotation(map_ann)

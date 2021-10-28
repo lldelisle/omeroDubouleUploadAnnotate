@@ -68,7 +68,9 @@ ui <- fluidPage(
                   ), 
                   tabPanel("Annotation",
                            uiOutput("prepareDFIfPossible"), # Only display the button if the project and dataset exists 
+                           h3("Info from upload"),
                            uiOutput("addUploadInfoIfPossible"), # Only display the button if it is the good project, the good dataset and there was a successful upload
+                           uiOutput("addPreviousUploadInfoIfPossible"), # Only display choices and button if the dataset exists and there are upload files
                            h3("Add annotations"),
                            # First the images needs to be selected
                            selectInput("imagesSel",
@@ -92,6 +94,7 @@ ui <- fluidPage(
                            downloadButton("downloadDF", "Download this table"),
                            uiOutput("currentDFstatus"),
                            uiOutput("uploadDFIfNeeded"), # Only display the button if there is a change
+                           helpText("Once the key values are updated an output will be printed below."),
                            verbatimTextOutput("outputFUploadDF") # Get the output of the upload key values script
                   ),
                   tabPanel("Debug",
@@ -118,6 +121,7 @@ server <- function(input, output) {
                            upload.project = "", # Project name used at upload
                            upload.dataset = "", # Dataset name used at upload
                            upload.path = "", # Path of dir or files to upload
+                           uploadLogAttached = TRUE, # Whether the last upload has been attached
                            original.dataframe = data.frame(), # Dataframe obtained from OMERO for the project.df and dataset.df
                            current.dataframe = data.frame(), # Dataframe enriched from original.dataframe with new key values to upload to OMERO
                            project.df = "", # Project name corresponding to all dataframes
@@ -126,6 +130,8 @@ server <- function(input, output) {
                            current.is.ori = TRUE, # If there are differences between original.dataframe and current.dataframe
                            existing.key.values = list(), # A named list where names are keys and items are vectors with used values in OMERO by the group
                            lastKeySelected = "image.name", # Just used to keep what has been selected before
+                           lastSelectedColumn = "image.name", # Just used to keep what has been selected before
+                           lastSelectedPattern = "", # Just used to keep what has been selected before
                            lastSelectionValue = "fixed", # Just used to keep what has been selected before
                            lastSelectedColumnValue = "image.name", # Just used to keep what has been selected before
                            lastSplitCharacter = "_", # Just used to keep what has been selected before
@@ -164,6 +170,12 @@ server <- function(input, output) {
     disconnect(my.ome$server)
     my.ome$server <- NULL
     my.ome$valid.login <- FALSE
+    my.ome$original.dataframe <- data.frame()
+    my.ome$current.dataframe <- data.frame()
+    my.ome$project.df <- ""
+    my.ome$dataset.df <- ""
+    my.ome$toMerge.dataframe <- data.frame()
+    my.ome$current.is.ori <- TRUE
   })
   
   # When the counter update is modified
@@ -209,7 +221,7 @@ server <- function(input, output) {
                                                   intern = T))
       
       if (my.ome$debug.mode){
-        cat(file = stderr(), my.ome$existing.key.values, "\n")
+        cat(file = stderr(), str(my.ome$existing.key.values), "\n")
       }
     }
   })
@@ -273,7 +285,7 @@ server <- function(input, output) {
       my.choices <- sort(names(my.ome$projects.ids))
     }
     if (my.ome$debug.mode){
-      cat(file = stderr(), my.choices, "\n")
+      cat(file = stderr(), str(my.choices), "\n")
     }
     selectizeInput("projectSelected",
                    "Select existing project or write a new one",
@@ -300,13 +312,22 @@ server <- function(input, output) {
       if (input$projectSelected %in% names(my.ome$projects.ids)){
         if (my.ome$debug.mode){
           cat(file = stderr(), "EXISTING PROJECT\n")
-          cat(file = stderr(), which(names(my.ome$projects.ids) == input$projectSelected), "\n")
+          cat(file = stderr(), str(which(names(my.ome$projects.ids) == input$projectSelected)), "\n")
         }
         my.datasets <- getDatasets(my.ome$projects[[which(names(my.ome$projects.ids) == input$projectSelected)]])
         all.datasets.obj <- sapply(my.datasets, slot, name = "dataobject")
         my.choices <- sapply(all.datasets.obj, function(ob){ob$getId()})
         names(my.choices) <- sapply(all.datasets.obj, function(ob){ob$getName()})
         my.ome$datasets.ids <- my.choices
+        if (nrow(my.ome$current.dataframe) > 0 && ! my.ome$dataset.df %in% names(my.choices)){
+          # The project changed we reset all dataframes
+          my.ome$original.dataframe <- data.frame()
+          my.ome$current.dataframe <- data.frame()
+          my.ome$project.df <- ""
+          my.ome$dataset.df <- ""
+          my.ome$toMerge.dataframe <- data.frame()
+          my.ome$current.is.ori <- TRUE
+        }
       } else {
         my.ome$datasets.ids <- NULL
       }
@@ -323,11 +344,16 @@ server <- function(input, output) {
     if (! is.null(my.ome$datasets.ids)){
       my.choices <- sort(names(my.ome$datasets.ids))
     }
+    if ( my.ome$dataset.df != ""){
+      my.selected <- my.ome$dataset.df
+    } else {
+      my.selected <- my.ome$upload.dataset
+    }
     selectizeInput("datasetSelected",
                    "Select existing dataset or write a new one",
                    choices = my.choices,
                    options = list(create = TRUE),
-                   selected = my.ome$upload.dataset,
+                   selected = my.selected,
                    multiple = F)
   })
   
@@ -373,17 +399,21 @@ server <- function(input, output) {
     } else {
       if (my.ome$debug.mode){
         cat(file = stderr(), paste0(omero.path, " import -s ",  my.ome$server@host,
-                     " -u \'", my.ome$server@username, "\' -w \'", input$password,
-                     "\' --depth ", input$depth, " -T Project:name:\"", input$projectSelected,
-                     "\"/Dataset:name:\"", input$datasetSelected, "\" \'", prefix.path, "/",
-                     input$fileOrDirToUpload, "\' 2>&1\n"))
+                                    " -u \'", my.ome$server@username, "\' -w \'", input$password,
+                                    "\' --depth ", input$depth, " -T Project:name:\"", input$projectSelected,
+                                    "\"/Dataset:name:\"", input$datasetSelected, "\" \'", prefix.path, "/",
+                                    input$fileOrDirToUpload, "\' 2>&1\n"))
       }
       std.output <- system(paste0(omero.path, " import -s ",  my.ome$server@host,
                                   " -u \'", my.ome$server@username, "\' -w \'", input$password,
                                   "\' --depth ", input$depth, " -T Project:name:\"", input$projectSelected,
                                   "\"/Dataset:name:\"", input$datasetSelected, "\" \'", prefix.path, "/",
                                   input$fileOrDirToUpload, "\' 2>&1"), intern = T)
+      if (my.ome$debug.mode){
+        cat(file = stderr(), std.output, "\n")
+      }
       my.ome$update <- my.ome$update + 1
+      my.ome$uploadLogAttached <- FALSE
       return(std.output)
     }
   })
@@ -396,6 +426,9 @@ server <- function(input, output) {
     if (is.null(importO())){
       ""
     } else {
+      if (my.ome$debug.mode){
+        cat(file = stderr(), importO(), "\n")
+      }
       if ("==> Summary" %in% importO()){
         importO()[which(importO() == "==> Summary") + 1]
       } else {
@@ -414,6 +447,9 @@ server <- function(input, output) {
   
   # success.upload() is FALSE except if the upload worked
   success.upload <- reactive({
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "SUCCESSUPLOAD\n")
+    }
     if (my.ome$upload.project != "" &&
         my.ome$upload.dataset != "" &&
         my.ome$upload.path != "" &&
@@ -421,6 +457,33 @@ server <- function(input, output) {
       TRUE
     } else {
       FALSE
+    }
+  })
+  
+  # When the upload is successful
+  # This will attach the upload log to the dataset
+  observe({
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "SUCCESSUPLOAD or changed\n")
+      cat(file = stderr(), success.upload(), "\n")
+      
+    }
+    if (success.upload() && my.ome$upload.dataset %in% names(my.ome$datasets.ids) && ! my.ome$uploadLogAttached){
+      tmp.fn <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_upload.log"))
+      cat(file = tmp.fn, importO(), sep = "\n")
+      if (my.ome$debug.mode){
+        cat(file = stderr(), my.ome$upload.dataset, "\n")
+        cat(file = stderr(), "DATASETID:", unname(my.ome$datasets.ids[my.ome$upload.dataset]), "\n")
+        cat(file = stderr(), tmp.fn, "\n")
+      }
+      my_dataset_id <- unname(my.ome$datasets.ids[my.ome$upload.dataset])
+      if (is.na(my_dataset_id)){
+        print("HERE")
+      } else {
+        my_dataset <- loadObject(my.ome$server, "DatasetData", unname(my.ome$datasets.ids[my.ome$upload.dataset]))
+        invisible(attachFile(my_dataset, tmp.fn))
+        my.ome$uploadLogAttached <- TRUE
+      }
     }
   })
   
@@ -459,13 +522,15 @@ server <- function(input, output) {
     } else if (! input$datasetSelected %in% names(my.ome$datasets.ids)){
       HTML("You need to choose an existing dataset")
     } else {
-      output <- NULL
       if (nrow(my.ome$current.dataframe) == 0){
-        output <- list(HTML("<h3> First click here </h3>"))
+        header.text <- "<h3> First click here </h3>"
+        button.text <- "Generate the dataframe from existing key values"
+      } else {
+        header.text <- paste0("To regenerate the dataframe from OMERO Key values for ", input$datasetSelected, ". Click here <br/>")
+        button.text <- paste0("Re-generate")
       }
-      return(c(output,
-               list(actionButton("prepareDF", "Generate the dataframe from existing key values"))
-      ))
+      return(list(HTML(header.text),
+                  actionButton("prepareDF", button.text)))
     }
   })
   
@@ -518,7 +583,53 @@ server <- function(input, output) {
   # the dataframes are merged
   observeEvent(input$addUploadInfo, {
     # We assume that my.ome$current.dataframe corresponds to what is in importO()
-    my.ome$current.dataframe <- merge(my.ome$current.dataframe, parseImportOutput(importO()), all.x = T)
+    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, parseImportOutput(importO()), my.ome$debug.mode)
+  })
+  
+  # Button to add upload path for corresponding image ids
+  # For previous uplaod
+  # Only if possible
+  output$addPreviousUploadInfoIfPossible <- renderUI({
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "addPreviousUploadInfoIfPossible\n")
+      cat(file = stderr(), nrow(my.ome$current.dataframe), "\n")
+    }
+    if (nrow(my.ome$current.dataframe) == 0){
+      # HTML("To add upload info from previous uplaods, you need to generate the dataframe from existing values.")
+      HTML("")
+    } else {
+      my_dataset <- loadObject(my.ome$server, "DatasetData", unname(my.ome$datasets.ids[my.ome$dataset.df]))
+      my_annotations <- getAnnotations(my_dataset)
+      if (nrow(my_annotations) == 0){
+        HTML("")
+      } else {
+        upload.files.ids <- my_annotations$FileID[grep("upload.log$", my_annotations$Name)]
+        if (length(upload.files.ids) == 0){
+          HTML("")
+        } else {
+          names(upload.files.ids) <- grep("upload.log$", my_annotations$Name, value = T)
+          upload.files.ids <- upload.files.ids[order(names(upload.files.ids))]
+          list(selectInput("previousUploadFileID", "Select the file for which you want to add the info",
+                           choices = upload.files.ids),
+               actionButton("addPreviousUploadInfo", "Add info from this upload"))
+        }
+      }
+    }
+  })
+  
+  # If the user click on addPreviousUploadInfo
+  # the dataframes are merged
+  observeEvent(input$addPreviousUploadInfo, {
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "addPreviousUploadInfo\n")
+      cat(file = stderr(), input$previousUploadFileID, "\n")
+    }
+    df <- loadCSV(my.ome$server, input$previousUploadFileID,
+                  header = F, sep = ";")
+    if (my.ome$debug.mode){
+      cat(file = stderr(), str(df), "\n")
+    }
+    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, parseImportOutput(df$V1), my.ome$debug.mode)
   })
   
   # Render the dataframes
@@ -536,10 +647,11 @@ server <- function(input, output) {
       HTML("")
     } else {
       list(selectInput("selectColumn", "Select the column used to select your images",
-                       choices = colnames(my.ome$current.dataframe)),
+                       choices = colnames(my.ome$current.dataframe),
+                       selected = my.ome$lastSelectedColumn),
            textInput("patternImages",
                      "Put here a word which is specific to the group of images to select",
-                     value = ""))
+                     value = my.ome$lastSelectedPattern))
       
     }
   })
@@ -717,29 +829,7 @@ server <- function(input, output) {
   # if columns are common do it nicely
   observeEvent(input$mergeToCurrent, {
     extra.cols <- setdiff(colnames(my.ome$toMerge.dataframe), c("id", "image.name"))
-    existing.extra.cols <- intersect(extra.cols, colnames(my.ome$current.dataframe))
-    if (my.ome$debug.mode){
-      cat(file = stderr(), "MERGE\n")
-      cat(file = stderr(), extra.cols, "\n")
-      cat(file = stderr(), existing.extra.cols, "\n")
-    }
-    if (length(existing.extra.cols) == 0){
-      my.ome$current.dataframe <- merge(my.ome$current.dataframe, my.ome$toMerge.dataframe, all.x = T)
-    } else {
-      if (my.ome$debug.mode){
-        cat(file = stderr(), "MERGE COMMON COLS\n")
-      }
-      my.ome$current.dataframe <- merge(my.ome$current.dataframe,
-                                        my.ome$toMerge.dataframe[, setdiff(colnames(my.ome$toMerge.dataframe),
-                                                                           existing.extra.cols)], all.x = T)
-      my.ids <- my.ome$toMerge.dataframe$id
-      for (my.col in existing.extra.cols){
-        if (my.ome$debug.mode){
-          cat(file = stderr(), my.col, "\n")
-        }
-        my.ome$current.dataframe[match(my.ids, my.ome$current.dataframe$id), my.col] <- my.ome$toMerge.dataframe[, my.col]
-      }
-    }
+    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, my.ome$toMerge.dataframe, my.ome$debug.mode)
     # Update the existing key values:
     for (my.col in extra.cols){
       if (my.col %in% names(my.ome$existing.key.values)){
@@ -804,7 +894,7 @@ server <- function(input, output) {
                                       arr.ind = T)
           
           if (my.ome$debug.mode){
-            cat(file = stderr(), changed.values.coo, "\n")
+            cat(file = stderr(), str(changed.values.coo), "\n")
           }
           if (length(existing.extra.cols) == 1){
             if (length(changed.values.coo) == 0){
@@ -911,7 +1001,7 @@ server <- function(input, output) {
   # If the user click on the debug mode
   # A lot of prints to the stderr
   observeEvent(input$debugMode,{
-    cat(file = stderr(), "DEBUG MODE")
+    cat(file = stderr(), "DEBUG MODE\n")
     my.ome$debug.mode <- input$debugMode
   })
   

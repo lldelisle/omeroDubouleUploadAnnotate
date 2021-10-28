@@ -59,6 +59,48 @@ initiateDF <- function(omero.server, dataset){
   return(summary.df)
 }
 
+mergeNicely <- function(mainDF, newDF, verbose){
+  if (! "id" %in% colnames(mainDF)){
+    if (verbose){
+      cat(file = stderr(), "No id in mainDF\n")
+      return(mainDF)
+    }
+  }
+  if (! "id" %in% colnames(newDF)){
+    if (verbose){
+      cat(file = stderr(), "No id in newDF\n")
+      return(mainDF)
+    }
+  }
+  extra.cols <- setdiff(colnames(newDF), c("id", "image.name"))
+  existing.extra.cols <- intersect(extra.cols, colnames(mainDF))
+  if (verbose){
+    cat(file = stderr(), "MERGE\n")
+    cat(file = stderr(), extra.cols, "\n")
+    cat(file = stderr(), existing.extra.cols, "\n")
+  }
+  if (length(existing.extra.cols) == 0){
+    mainDF <- merge(mainDF, newDF, all.x = T)
+  } else {
+    if (verbose){
+      cat(file = stderr(), "MERGE COMMON COLS\n")
+    }
+    if (length(extra.cols) > length(existing.extra.cols)){
+      mainDF <- merge(mainDF,
+                      newDF[, setdiff(colnames(newDF),
+                                      existing.extra.cols)], all.x = T)
+    }
+    my.ids <- newDF$id
+    for (my.col in existing.extra.cols){
+      if (verbose){
+        cat(file = stderr(), my.col, "\n")
+      }
+      mainDF[match(my.ids, mainDF$id), my.col] <- newDF[, my.col]
+    }
+  }
+  return(mainDF)
+}
+
 # This is super slow while it is super quick in python
 # getAllKeyValuesFromScratch <- function(omero.server, omero.projects){
 #   all.datasets <- unlist(lapply(omero.projects, getDatasets))
