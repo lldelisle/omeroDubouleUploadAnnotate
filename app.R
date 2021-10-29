@@ -211,13 +211,15 @@ server <- function(input, output) {
       cat(file = stderr(), "UPDATE KEYVAL\n")
     }
     if (my.ome$valid.login){
+      tmp.fn.password <- tempfile()
+      cat(input$password, file = tmp.fn.password)
       my.ome$existing.key.values <- read_yaml(text = 
                                                 system(
                                                   paste0(gsub("omero$", "python", omero.path),
                                                          " external_scripts/get_all_omero_key_values_in_yaml.py",
                                                          " --server omero-server.epfl.ch --user \'",
                                                          input$username, "\' --password \'",
-                                                         input$password, "\'"),
+                                                         tmp.fn.password, "\'"),
                                                   intern = T))
       
       if (my.ome$debug.mode){
@@ -981,6 +983,8 @@ server <- function(input, output) {
     df[is.na(df)] <- ""
     tmp.fn <- tempfile()
     write.csv(df, file = tmp.fn, row.names = FALSE)
+    tmp.fn.password <- tempfile()
+    cat(input$password, file = tmp.fn.password)
     # Contrary to the batch annotation this will erase
     # current key values.
     system(
@@ -988,7 +992,7 @@ server <- function(input, output) {
              " external_scripts/update_key_values_from_file.py",
              " --server omero-server.epfl.ch --user \'",
              input$username, "\' --password \'",
-             input$password, "\' --file \'",
+             tmp.fn.password, "\' --file \'",
              tmp.fn, "\' --sep ','  2>&1"),
       intern = T)
   })

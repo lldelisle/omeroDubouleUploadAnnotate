@@ -119,15 +119,20 @@ argp = argparse.ArgumentParser(
 argp.add_argument("-s", "--server", help="OMERO server hostname")
 argp.add_argument("-p", "--port", help="OMERO server port")
 argp.add_argument("-u", "--user", help="OMERO username")
-argp.add_argument("-w", "--password", help="OMERO password")
+argp.add_argument("-w", "--password", help="OMERO password or file with password in first line")
 argp.add_argument("-f", "--file", help="CSV with key values with header."
                   "One row per image of the dataset."
                   " One row must be 'id'")
 argp.add_argument("--sep", default  =',', help="Field separator in the file.")
 
 args = argp.parse_args()
+if os.path.exists(args.password):
+    with open(args.password, 'r') as f:
+        password = f.readlines()[0].strip()
+else:
+    password = args.password
 
 key_values_df = readCSV(args.file, args.sep)
 set_all_key_values(key_values_df,
-                   args.user, args.password,
+                   args.user, password,
                    args.server, args.port)

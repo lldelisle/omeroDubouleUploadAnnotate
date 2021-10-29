@@ -4,6 +4,7 @@ import omero
 from omero.gateway import BlitzGateway
 import argparse
 import sys
+import os
 
 def get_all_key_values(username, password, host, port):
     # Get existing key/values
@@ -24,13 +25,17 @@ argp = argparse.ArgumentParser(
 argp.add_argument("-s", "--server", help="OMERO server hostname")
 argp.add_argument("-p", "--port", help="OMERO server port")
 argp.add_argument("-u", "--user", help="OMERO username")
-argp.add_argument("-w", "--password", help="OMERO password")
+argp.add_argument("-w", "--password", help="OMERO password or file with password in first line")
 argp.add_argument("-o", "--output", default=sys.stdout,
                   type=argparse.FileType('w'),
                   help="Output yaml file.")
 
 args = argp.parse_args()
-
-key_values = get_all_key_values(args.user, args.password,
+if os.path.exists(args.password):
+    with open(args.password, 'r') as f:
+        password = f.readlines()[0].strip()
+else:
+    password = args.password
+key_values = get_all_key_values(args.user, password,
                                 args.server, args.port)
 args.output.write(dump(key_values, default_style="'"))
