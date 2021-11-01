@@ -10,7 +10,9 @@ library(reshape)
 library(yaml)
 library(romero.gateway)
 library(shiny)
-
+library(promises)
+library(future)
+plan(multisession)
 
 source("helpers.R")
 
@@ -121,7 +123,7 @@ server <- function(input, output) {
                            upload.project = "", # Project name used at upload
                            upload.dataset = "", # Dataset name used at upload
                            upload.path = "", # Path of dir or files to upload
-                           uploadLogAttached = TRUE, # Whether the last upload has been attached
+                           lastUploadFile = "", # Path to temp file with the stdout of last upload
                            original.dataframe = data.frame(), # Dataframe obtained from OMERO for the project.df and dataset.df
                            current.dataframe = data.frame(), # Dataframe enriched from original.dataframe with new key values to upload to OMERO
                            project.df = "", # Project name corresponding to all dataframes
@@ -139,6 +141,9 @@ server <- function(input, output) {
                            debug.mode = FALSE # Logical whether there should be print
                            
   )
+  # This reactive value is separated as it depends on future promise
+  # It is NULL, FALSE or TRUE
+  successUpload <- reactiveVal()
   
   # When the user click on the login button
   # my.ome$server is updated as well as valid.login and failed.login
@@ -364,19 +369,23 @@ server <- function(input, output) {
     if (my.ome$debug.mode){
       cat(file = stderr(), "importF\n")
     }
-    if (input$fileOrDirToUpload == ""){
-      "Set the file or dir"
-    } else {
-      # system(paste0(omero.path, " import --depth ", input$depth, " -f \'", prefix.path, "/", input$fileOrDirToUpload, "\' 2>&1"), intern = T,
-      #        ignore.stdout = F, ignore.stderr = F)
-      system(paste0(omero.path, " import --depth ", input$depth, " -f \'", prefix.path, "/", input$fileOrDirToUpload, "\'"), intern = T,
-             ignore.stdout = F, ignore.stderr = F)
-    }
+    depth <- input$depth
+    fileOrDirToUpload <- input$fileOrDirToUpload
+    future_promise({ 
+      if (fileOrDirToUpload == ""){
+        "Set the file or dir"
+      } else {
+        # system(paste0(omero.path, " import --depth ", input$depth, " -f \'", prefix.path, "/", input$fileOrDirToUpload, "\' 2>&1"), intern = T,
+        #        ignore.stdout = F, ignore.stderr = F)
+        system(paste0(omero.path, " import --depth ", depth, " -f \'", prefix.path, "/", fileOrDirToUpload, "\'"), intern = T,
+               ignore.stdout = F, ignore.stderr = F)
+      }
+    })
   })
   
   # importF is launched only if this output is active
   output$outputF <- renderPrint({
-    cat(importF(), sep = "\n")
+    importF() %...>% cat(sep = "\n")
   })
   
   # button upload and output text if logged in
@@ -394,49 +403,89 @@ server <- function(input, output) {
     }
   })
   
-  # importO() contains the std out of omero import
-  importO <- eventReactive(input$upload, {
-    if (! my.ome$valid.login){
-      "Login first"
-    } else if (input$fileOrDirToUpload == ""){
-      "Set the file or dir"
-    } else {
-      if (my.ome$debug.mode){
-        cat(file = stderr(), paste0(omero.path, " import -s ",  my.ome$server@host,
-                                    " -u \'", my.ome$server@username, "\' -w \'", input$password,
-                                    "\' --depth ", input$depth, " -T Project:name:\"", input$projectSelected,
-                                    "\"/Dataset:name:\"", input$datasetSelected, "\" \'", prefix.path, "/",
-                                    input$fileOrDirToUpload, "\' 2>&1\n"))
+  # successUpload() contains NULL (On going), TRUE (success)  or FALSE (failure)
+  observeEvent(input$upload, {
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "Click on upload will launch the commandline\n")
+    }
+    fileOrDirToUpload <- input$fileOrDirToUpload
+    depth <- input$depth
+    projectSelected <- input$projectSelected
+    datasetSelected <- input$datasetSelected
+    tmp.fn.password <- tempfile()
+    cat(input$password, file = tmp.fn.password)
+    valid.login <- my.ome$valid.login
+    debug.mode <- my.ome$debug.mode
+    host <- my.ome$server@host
+    username <- my.ome$server@username
+    successUpload(NULL)
+    my.ome$lastUploadFile <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_upload.log"))
+    lastUploadFile <- my.ome$lastUploadFile
+    if (debug.mode){
+      cat(file = stderr(), paste0("bash external_scripts/upload_and_add_log.sh \"",
+                                  paste(omero.path, host, username, tmp.fn.password,
+                                        depth, projectSelected, datasetSelected,
+                                        paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
+                                        sep = "\" \""),
+                                  "\""),
+          "\n")
+    }
+    future_promise({
+      # I don't know why I don't see that.
+      if (debug.mode){
+        cat(file = stderr(), "HERE\n")
       }
-      std.output <- system(paste0(omero.path, " import -s ",  my.ome$server@host,
-                                  " -u \'", my.ome$server@username, "\' -w \'", input$password,
-                                  "\' --depth ", input$depth, " -T Project:name:\"", input$projectSelected,
-                                  "\"/Dataset:name:\"", input$datasetSelected, "\" \'", prefix.path, "/",
-                                  input$fileOrDirToUpload, "\' 2>&1"), intern = T)
+      system(paste0("bash external_scripts/upload_and_add_log.sh \"",
+                   paste(omero.path, host, username, tmp.fn.password,
+                   depth, projectSelected, datasetSelected,
+                   paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
+                   sep = "\" \""),
+                   "\"")
+      )
+      if (! file.exists(lastUploadFile)){
+        cat("Something went wrong.\n", file = lastUploadFile)
+      }
+      std.output <- readLines(lastUploadFile)
+      if ("==> Summary" %in% std.output){
+        return(TRUE)
+      } else {
+        return(FALSE)
+      }
+    }) %...>% successUpload()
+  })
+  
+  observeEvent(successUpload(), {
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "SUCCESSUPLOAD CHANGED\n")
+    }
+    if (is.null(req(successUpload()))){
+      return()
+    }
+    if (req(successUpload()) && ! my.ome$upload.dataset %in% names(my.ome$datasets.ids)){
       if (my.ome$debug.mode){
-        cat(file = stderr(), std.output, "\n")
+        cat(file = stderr(), "THIS IS A SUCCESS UPLOAD TO A NEW DATASET\n")
       }
       my.ome$update <- my.ome$update + 1
-      my.ome$uploadLogAttached <- FALSE
-      return(std.output)
     }
   })
   
-  # Text with summary of importO()
+  # Text with summary of successUpload()
   output$shortOutputUpload <- renderText({
     if (my.ome$debug.mode){
-      cat(file = stderr(), "IMPORTO CHANGED\n")
+      cat(file = stderr(), "CHANGING THE OUTPUT OF UPLOAD\n")
+      if (my.ome$upload.project != ""){
+        cat(file = stderr(), req(successUpload()))
+      }
     }
-    if (is.null(importO())){
+    if (is.null(req(successUpload()))){
       ""
     } else {
-      if (my.ome$debug.mode){
-        cat(file = stderr(), importO(), "\n")
-      }
-      if ("==> Summary" %in% importO()){
-        importO()[which(importO() == "==> Summary") + 1]
+      std.output <- readLines(my.ome$lastUploadFile)
+      if (my.ome$upload.project != ""){
+        std.output <- readLines(my.ome$lastUploadFile)
+        std.output[which(std.output == "==> Summary") + 1]
       } else {
-        paste(importO(), collapse = "\n")
+        paste(std.output, collapse = "\n")
       }
     }
   })
@@ -449,51 +498,12 @@ server <- function(input, output) {
     my.ome$upload.path <- input$fileOrDirToUpload
   })
   
-  # success.upload() is FALSE except if the upload worked
-  success.upload <- reactive({
-    if (my.ome$debug.mode){
-      cat(file = stderr(), "SUCCESSUPLOAD\n")
-    }
-    if (my.ome$upload.project != "" &&
-        my.ome$upload.dataset != "" &&
-        my.ome$upload.path != "" &&
-        "==> Summary" %in% importO()){
-      TRUE
-    } else {
-      FALSE
-    }
-  })
-  
-  # When the upload is successful
-  # This will attach the upload log to the dataset
-  observe({
-    if (my.ome$debug.mode){
-      cat(file = stderr(), "SUCCESSUPLOAD or changed\n")
-      cat(file = stderr(), success.upload(), "\n")
-      
-    }
-    if (success.upload() && my.ome$upload.dataset %in% names(my.ome$datasets.ids) && ! my.ome$uploadLogAttached){
-      tmp.fn <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_upload.log"))
-      cat(file = tmp.fn, importO(), sep = "\n")
-      if (my.ome$debug.mode){
-        cat(file = stderr(), my.ome$upload.dataset, "\n")
-        cat(file = stderr(), "DATASETID:", unname(my.ome$datasets.ids[my.ome$upload.dataset]), "\n")
-        cat(file = stderr(), tmp.fn, "\n")
-      }
-      my_dataset_id <- unname(my.ome$datasets.ids[my.ome$upload.dataset])
-      if (is.na(my_dataset_id)){
-        print("HERE")
-      } else {
-        my_dataset <- loadObject(my.ome$server, "DatasetData", unname(my.ome$datasets.ids[my.ome$upload.dataset]))
-        invisible(attachFile(my_dataset, tmp.fn))
-        my.ome$uploadLogAttached <- TRUE
-      }
-    }
-  })
-  
   # Text on upload info
   output$lastUpload <- renderText({
-    if (success.upload()){
+    if (is.null(req(successUpload()))){
+      "No successful upload"
+    }
+    if (req(successUpload())){
       paste0("Last upload is ", my.ome$upload.path,
              " in ", my.ome$upload.project, "/",
              my.ome$upload.dataset)
@@ -567,7 +577,10 @@ server <- function(input, output) {
       cat(file = stderr(), "addUploadInfoIfPossible\n")
       cat(file = stderr(), nrow(my.ome$current.dataframe), "\n")
     }
-    if (! success.upload()){
+    if ( is.null(req(successUpload()))){
+      HTML("")
+    }
+    if (! req(successUpload())){
       HTML("")
     } else if (nrow(my.ome$current.dataframe) == 0 || 
                input$projectSelected != my.ome$upload.project ||
@@ -586,8 +599,9 @@ server <- function(input, output) {
   # If the user click on addUploadInfo
   # the dataframes are merged
   observeEvent(input$addUploadInfo, {
-    # We assume that my.ome$current.dataframe corresponds to what is in importO()
-    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, parseImportOutput(importO()), my.ome$debug.mode)
+    # We assume that my.ome$current.dataframe corresponds to what is in my.ome$lastUploadFile
+    std.output <- readLines(my.ome$lastUploadFile)
+    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, parseImportOutput(std.output), my.ome$debug.mode)
   })
   
   # Button to add upload path for corresponding image ids
