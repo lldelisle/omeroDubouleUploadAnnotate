@@ -8,6 +8,7 @@ import pandas as pd
 from collections import OrderedDict
 import copy
 import numpy as np
+import os
 
 # These pieces are from https://raw.githubusercontent.com/mpievolbio-scicomp/obat/master/03-KeyVal_from_csv.py
 """
