@@ -383,6 +383,8 @@ server <- function(input, output) {
   output$UploadIfPossible <- renderUI({
     if(! my.ome$valid.login){
       HTML("")
+    } else if (input$fileOrDirToUpload == "") {
+      HTML("")
     } else {
       list(
         h3("Upload"),
