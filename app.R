@@ -154,7 +154,7 @@ server <- function(input, output) {
     }
     my.ome$server <- tryCatch(connect(OMEROServer(host = "omero-server.epfl.ch", username = input$username, password = input$password, port = as.integer(4064))),
                               error = function(e) {
-                                cat(file = stderr(), e, "\n")
+                                cat(file = stderr(), str(e), "\n")
                                 NULL
                               })
     if (! is.null(my.ome$server)){
@@ -694,7 +694,7 @@ server <- function(input, output) {
       # I put a tryCatch if something is wrong with grep
       matching.ids <- tryCatch(my.ome$current.dataframe$id[grep(input$patternImages, my.ome$current.dataframe[, input$selectColumn])],
                                error = function(e){
-                                 cat(file = stderr(), e, "\n")
+                                 cat(file = stderr(), str(e), "\n")
                                  my.ome$current.dataframe$id
                                })
       if (! all(matching.ids %in% my.ome$toMerge.dataframe$id) || ! all(my.ome$toMerge.dataframe$id %in% matching.ids)){
@@ -793,7 +793,7 @@ server <- function(input, output) {
     # I put a tryCath because strsplit may raise an error
     my.splitted.values <- tryCatch(strsplit(my.values.to.split, input$splitCharacter),
                                    error = function(e) {
-                                     cat(file = stderr(), e, "\n")
+                                     cat(file = stderr(), str(e), "\n")
                                      NA
                                    })
     my.values <- sapply(my.splitted.values, function(v){
