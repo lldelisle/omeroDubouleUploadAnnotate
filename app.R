@@ -66,7 +66,8 @@ ui <- fluidPage(
                            actionButton("checkUpload", "Check what will be uploaded."),
                            helpText("It can be long... Be patient. Once done an output will be printed below."),
                            verbatimTextOutput("outputF"),
-                           uiOutput("UploadIfPossible") # Upload button on output only if logged in
+                           uiOutput("UploadIfPossible"), # Upload button on output only if logged in
+                           uiOutput("CheckCurrentUploadIfPossible") # CheckUpload button only if logged in
                   ), 
                   tabPanel("Annotation",
                            uiOutput("prepareDFIfPossible"), # Only display the button if the project and dataset exists 
@@ -513,6 +514,38 @@ server <- function(input, output) {
       "No successful upload"
     }
   })
+  
+  # button checkCurrentUpload and output verbatim if logged in
+  output$CheckCurrentUploadIfPossible <- renderUI({
+    if(! my.ome$valid.login){
+      HTML("")
+    } else {
+      list(
+        h3("On going uploads"),
+        actionButton("checkCurrentUpload", "Check which are the uploads on going."),
+        dataTableOutput("currentUpload"))
+    }
+  })
+  
+  currentUploadDF <- eventReactive(input$checkCurrentUpload,{
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "getCurrentUpload\n")
+    }
+    csv.text <- system(paste0("ps aux |",
+                              " grep \"sh -c bash external_scripts/upload_and_add_log.sh\" |",
+                              " grep -v grep |",
+                              " awk -F \"\\\"\" '{split($1, a, \" \"); print a[9]\",\"$6\",\"$12\",\"$14}'"),
+                       intern = T)
+    if (my.ome$debug.mode){
+      cat(file = stderr(), csv.text, "\n")
+    }
+    df <- read.csv(text = csv.text,
+                   col.names = c("started", "omero-user", "project", "dataset"),
+                   header = F)
+    return(df)
+  })
+  
+  output$currentUpload <- renderDataTable(currentUploadDF())
   
   # Text on project and datasets in Annotation
   output$currentKeyval <- renderText({
