@@ -63,6 +63,8 @@ def remove_MapAnnotations(conn, dtype, Id ):
     return
 # End
 
+# I noticed a bug: when the delete fails
+# AttributeError: 'CmdError' object has no attribute 'message'
 
 def readCSV(file, sep):
     keyvalsdf = pd.read_csv(file, sep=sep, dtype=str)
@@ -87,33 +89,55 @@ def set_all_key_values(df, username, password, host, port):
                         if not (k in kv):
                             kv[k] = v
             changed = False
+            msg_adding = ""
+            msg_changing = ""
+            new_keys_image = []
+            complement_kv = {}
             for key in my_dict:
                 if key in ['id', 'image.name']:
                     continue
                 if isinstance(my_dict[key], float) and np.isnan(my_dict[key]):
                     continue
                 if key in kv and my_dict[key] != kv[key]:
-                    print(f"Changing {kv[key]} to {my_dict[key]} for {key} for {my_image.getName()}")
+                    msg_changing += f"Changing {kv[key]} to {my_dict[key]} for {key} for {my_image.getName()}"
+                    msg_changing += "\n"
                     changed = True
                 if key not in kv:
                     if key not in new_keys:
-                        print(f"Adding {key}.")
-                        new_keys.append(key)
+                        msg_adding += f"Adding {key}."
+                        msg_adding += "\n"
+                        new_keys_image.append(key)
+                    complement_kv[key] = my_dict[key]
                     changed = True
                 kv[key] = my_dict[key]
             if changed:
-                remove_MapAnnotations(conn, 'Image', int(my_dict['id']))
-                map_ann = omero.gateway.MapAnnotationWrapper(conn)
-                namespace = omero.constants.metadata.NSCLIENTMAPANNOTATION
-                map_ann.setNs(namespace)
-                # convert the dict to a list of lists
-                kv_list=[]
-                for k, v in kv.items():
-                    kv_list.append( [k,v] )
-                map_ann.setValue(kv_list)
-                map_ann.save()
-                my_image.linkAnnotation(map_ann)
-
+                dict_to_add = None
+                msgs_to_print = msg_adding
+                try:
+                    remove_MapAnnotations(conn, 'Image', int(my_dict['id']))
+                    dict_to_add = kv
+                    msgs_to_print += msg_changing
+                except Exception as e:
+                    if msg_changing != "":
+                        print("Could not delete the current annotation.")
+                        print("Desired changes that failed is:")
+                        print(msg_changing)
+                    dict_to_add = complement_kv
+                if len(dict_to_add) > 0:
+                    map_ann = omero.gateway.MapAnnotationWrapper(conn)
+                    namespace = omero.constants.metadata.NSCLIENTMAPANNOTATION
+                    map_ann.setNs(namespace)
+                    # convert the dict to a list of lists
+                    kv_list=[]
+                    for k, v in dict_to_add.items():
+                        kv_list.append( [k,v] )
+                    map_ann.setValue(kv_list)
+                    map_ann.save()
+                    my_image.linkAnnotation(map_ann)
+                    if msgs_to_print != "":
+                        print(msgs_to_print)
+                    for new_k in new_keys_image:
+                        new_keys.append(new_k)
 
 argp = argparse.ArgumentParser(
     description=("Update all key values from a csv file."))
@@ -122,7 +146,7 @@ argp.add_argument("-p", "--port", help="OMERO server port")
 argp.add_argument("-u", "--user", help="OMERO username")
 argp.add_argument("-w", "--password", help="OMERO password or file with password in first line")
 argp.add_argument("-f", "--file", help="CSV with key values with header."
-                  "One row per image of the dataset."
+                  " One row per image of the dataset."
                   " One row must be 'id'")
 argp.add_argument("--sep", default  =',', help="Field separator in the file.")
 
