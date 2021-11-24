@@ -321,7 +321,8 @@ server <- function(input, output) {
           cat(file = stderr(), "EXISTING PROJECT\n")
           cat(file = stderr(), str(which(names(my.ome$projects.ids) == input$projectSelected)), "\n")
         }
-        my.datasets <- getDatasets(my.ome$projects[[which(names(my.ome$projects.ids) == input$projectSelected)]])
+        my.datasets <- unlist(lapply(which(names(my.ome$projects.ids) == input$projectSelected),
+                                     function(i){getDatasets(my.ome$projects[[i]])}))
         all.datasets.obj <- sapply(my.datasets, slot, name = "dataobject")
         my.choices <- sapply(all.datasets.obj, function(ob){ob$getId()})
         names(my.choices) <- sapply(all.datasets.obj, function(ob){ob$getName()})
@@ -556,7 +557,8 @@ server <- function(input, output) {
       cat(file = stderr(), "prepareDF changed\n")
     }
     # Get the dataset object
-    my.datasets <- getDatasets(my.ome$projects[[which(names(my.ome$projects.ids) == input$projectSelected)]])
+    my.datasets <- unlist(lapply(which(names(my.ome$projects.ids) == input$projectSelected),
+                                 function(i){getDatasets(my.ome$projects[[i]])}))
     my.datasets.names <- sapply(my.datasets, function(my.d){my.d@dataobject$getName()})
     my.ome$current.dataframe <- initiateDF(my.ome$server, my.datasets[[which(my.datasets.names == input$datasetSelected)]])
     if (my.ome$debug.mode){
