@@ -422,13 +422,14 @@ server <- function(input, output) {
     successUpload(NULL)
     my.ome$lastUploadFile <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_upload.log"))
     lastUploadFile <- my.ome$lastUploadFile
+    tmp.fn.output.and.error <- tempfile()
     if (debug.mode){
       cat(file = stderr(), paste0("bash external_scripts/upload_and_add_log.sh \"",
                                   paste(omero.path, host, username, tmp.fn.password,
                                         depth, projectSelected, datasetSelected,
                                         paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
                                         sep = "\" \""),
-                                  "\""),
+                                  "\" 2>&1 > \"", tmp.fn.output.and.error, "\""),
           "\n")
     }
     future_promise({
@@ -441,7 +442,7 @@ server <- function(input, output) {
                    depth, projectSelected, datasetSelected,
                    paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
                    sep = "\" \""),
-                   "\"")
+                   "\" 2>&1 > \"", tmp.fn.output.and.error, "\"")
       )
       if (! file.exists(lastUploadFile)){
         cat("Something went wrong.\n", file = lastUploadFile)
