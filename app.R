@@ -790,7 +790,7 @@ server <- function(input, output) {
     if (my.ome$debug.mode){
       cat(file = stderr(), "From split\n")
     }
-    my.values.to.split <- my.ome$toMerge.dataframe[, input$selectColumnValue]
+    my.values.to.split <- my.ome$current.dataframe[match(my.ome$toMerge.dataframe$id, my.ome$current.dataframe$id), input$selectColumnValue]
     # I put a tryCath because strsplit may raise an error
     my.splitted.values <- tryCatch(strsplit(my.values.to.split, input$splitCharacter),
                                    error = function(e) {
