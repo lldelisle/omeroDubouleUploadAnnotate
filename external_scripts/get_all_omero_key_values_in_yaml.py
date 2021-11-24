@@ -10,13 +10,26 @@ def get_all_key_values(username, password, host, port):
     # Get existing key/values
     key_values = {}
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
-        for ann in conn.getObjects("MapAnnotation"):
-            if isinstance(ann._obj, omero.gateway.MapAnnotationI):
-                for k, v in ann.getValue():
-                    if k not in key_values:
-                        key_values[k] = []
-                    if v not in key_values[k]:
-                        key_values[k].append(v)
+        # Naive version 6 times slower:
+        # for ann in conn.getObjects("MapAnnotation"):
+        #     if isinstance(ann._obj, omero.gateway.MapAnnotationI):
+        #         for k, v in ann.getValue():
+        #
+        # Version with query quicker:
+        # inspired by https://gist.github.com/will-moore/12d31c026bfe5adaea4b2341494069a0#file-metadata_queries-py
+        params = omero.sys.ParametersI()
+        query = """
+            select mv.name, mv.value from 
+            ImageAnnotationLink ial
+            join ial.child a
+            join a.mapValue mv"""
+        result = conn.getQueryService().projection(query, params)
+        for row in result:
+            k, v = [x.val for x in row]
+            if k not in key_values:
+                key_values[k] = []
+            if v not in key_values[k]:
+                key_values[k].append(v)
     return(key_values)
 
 
