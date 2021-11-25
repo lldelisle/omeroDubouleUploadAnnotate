@@ -26,7 +26,7 @@ getKeyValueDFFromImage <- function(omero.server, my.i){
     keyvalues <- unlist(strsplit(keyvalues, ";"))
     keyvalues.split <- strsplit(keyvalues, "=")
     values <- sapply(keyvalues.split, tail, 1)
-    keys <- apply(cbind(keyvalues, values), 1, function(v){gsub(paste0("=", v[2], "$"), "", v[1])})
+    keys <- sapply(sapply(keyvalues.split, head, -1), paste, collapse = "=")
   } else {
     keys <- character(0)
     values <- character(0)
