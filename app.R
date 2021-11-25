@@ -100,6 +100,14 @@ ui <- fluidPage(
                            helpText("Once the key values are updated an output will be printed below."),
                            verbatimTextOutput("outputFUploadDF") # Get the output of the upload key values script
                   ),
+                  tabPanel("Simple Search",
+                           uiOutput("nbKVUI"), # UI with the number of KV to use to filter
+                           fluidRow(column(width = 4, uiOutput("searchKselect")), # One column with the keys
+                                    column(width = 4, uiOutput("searchVselect"))), # One column with the values
+                           actionButton("searchKV", "Search"), # Launch the query
+                           dataTableOutput("foundKV"), # dataframe with results
+                           downloadButton("downloadFoundDF", "Download this table")
+                  ), 
                   tabPanel("Debug",
                            checkboxInput("debugMode", "Print to the standard out", value = F),
                            verbatimTextOutput("debug")
@@ -241,10 +249,12 @@ server <- function(input, output) {
       showTab(inputId = "tabs", target = "Project Dataset")
       hideTab(inputId = "tabs", target = "Login")
       showTab(inputId = "tabsMain", target = "Annotation")
+      showTab(inputId = "tabsMain", target = "Simple Search")
     } else {
       hideTab(inputId = "tabs", target = "Project Dataset")
       showTab(inputId = "tabs", target = "Login")
       hideTab(inputId = "tabsMain", target = "Annotation")
+      hideTab(inputId = "tabsMain", target = "Simple Search")
     }
   })
   
@@ -1053,6 +1063,96 @@ server <- function(input, output) {
   output$outputFUploadDF <- renderPrint({
     cat(outputUploadDF(), sep = "\n")
   })
+  
+  # UI with the number of key to use. Not more than possible keys
+  output$nbKVUI <- renderUI({
+    numericInput("nbKV", label = "Number of key values to use", value = 1, min = 1, max = length(my.ome$existing.key.values))
+  })
+  
+  # UI with the input to select keys
+  # Do not display keys already used
+  output$searchKselect <- renderUI({
+    if (is.null(input$nbKV)){
+      return()
+    }
+    lapply(1:input$nbKV, function(id){
+      my.choices <- names(my.ome$existing.key.values)
+      if (id > 1){
+        my.choices <- tryCatch(setdiff(names(my.ome$existing.key.values), sapply(1:(id-1), function(previd){isolate(input[[paste0("searchKey", previd)]])})),
+                               error = function(e){
+                                 print(e)
+                                 return(names(my.ome$existing.key.values))
+                               })
+      } 
+      tryCatch(selectizeInput(paste0("searchKey", id), paste("Select the key", id),
+                              choices = my.choices,
+                              selected = NULL),
+               error = function(e){
+                 print(e)
+                 return(NULL)
+               })
+    })
+  })
+  
+  # UI with the input to select values
+  output$searchVselect <- renderUI({
+    if (is.null(input$nbKV)){
+      return()
+    }
+    lapply(1:input$nbKV, function(id){
+      tryCatch(selectizeInput(paste0("searchValue", id), paste("Select the value for key", id),
+                              choices = sort(my.ome$existing.key.values[[input[[paste0("searchKey", id)]]]]),
+                              selected = NULL),
+               error = function(e){
+                 print(e)
+                 return(NULL)
+               })
+    })
+  })
+  
+  # Dataframe with the result
+  foundKVDF <- eventReactive(input$searchKV, {
+    tmp.fn.password <- tempfile()
+    cat(input$password, file = tmp.fn.password)
+    key.vals.selected <- # key=value;key=value...
+      paste(sapply(1:input$nbKV, function(id){paste(input[[paste0("searchKey", id)]], input[[paste0("searchValue", id)]],
+                                                    sep = "=")}), collapse = ";")
+    suffix <- ""
+    if (input$useronly){
+      suffix <- " --onlyUserProjects"
+    }
+    if (my.ome$debug.mode){
+      cat(file = stderr(), paste0(gsub("omero$", "python", omero.path),
+                                  " external_scripts/get_images_from_key_values.py",
+                                  " --server omero-server.epfl.ch --user \'",
+                                  input$username, "\' --password \'",
+                                  tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
+                                  "\'", suffix, "\n"))
+    }
+    read.csv(text = system(
+      paste0(gsub("omero$", "python", omero.path),
+             " external_scripts/get_images_from_key_values.py",
+             " --server omero-server.epfl.ch --user \'",
+             input$username, "\' --password \'",
+             tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
+             "\'", suffix),
+      intern = T))
+  })
+  
+  output$foundKV <- renderDataTable(foundKVDF())
+  
+  # Substitute NA by "" before downloading
+  # Use a file name with date
+  output$downloadFoundDF <- downloadHandler(
+    filename = function() {
+      paste0(gsub(" ", "_", Sys.time()), "_search_key_values.csv")
+    },
+    content = function(file) {
+      df <- foundKVDF()
+      df[is.na(df)] <- ""
+      write.csv(df, file, row.names = FALSE)
+    }
+  )
   
   # If the user click on the debug mode
   # A lot of prints to the stderr
