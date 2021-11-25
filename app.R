@@ -108,6 +108,10 @@ ui <- fluidPage(
                            dataTableOutput("foundKV"), # dataframe with results
                            downloadButton("downloadFoundDF", "Download this table")
                   ), 
+                  tabPanel("Download",
+                           helpText("Mind the checkbox above the project selection to see if you want all or only yours."),
+                           downloadButton("downloadAllKV", "Download table with all images with key values")
+                  ), 
                   tabPanel("Debug",
                            checkboxInput("debugMode", "Print to the standard out", value = F),
                            verbatimTextOutput("debug")
@@ -250,11 +254,13 @@ server <- function(input, output) {
       hideTab(inputId = "tabs", target = "Login")
       showTab(inputId = "tabsMain", target = "Annotation")
       showTab(inputId = "tabsMain", target = "Simple Search")
+      showTab(inputId = "tabsMain", target = "Download")
     } else {
       hideTab(inputId = "tabs", target = "Project Dataset")
       showTab(inputId = "tabs", target = "Login")
       hideTab(inputId = "tabsMain", target = "Annotation")
       hideTab(inputId = "tabsMain", target = "Simple Search")
+      hideTab(inputId = "tabsMain", target = "Download")
     }
   })
   
@@ -1154,6 +1160,38 @@ server <- function(input, output) {
     }
   )
   
+  # Get all kv
+  # Substitute NA by "" before downloading
+  # Use a file name with date
+  output$downloadAllKV <- downloadHandler(
+    filename = function() {
+      if (input$useronly){
+        who <- input$username
+      } else {
+        who <- "all"
+      }
+      return(paste0(gsub(" ", "_", Sys.time()), "_", who, "_key_values.csv"))
+    },
+    content = function(file) {
+      tmp.fn.password <- tempfile()
+      cat(input$password, file = tmp.fn.password)
+      suffix <- ""
+      if (input$useronly){
+        suffix <- " --onlyUserProjects"
+      }
+      df <- 
+        read.csv(text = system(
+          paste0(gsub("omero$", "python", omero.path),
+                 " external_scripts/get_all_key_values_per_image.py",
+                 " --server omero-server.epfl.ch --user \'",
+                 input$username, "\' --password \'",
+                 tmp.fn.password, "\'", suffix),
+          intern = T))
+      df[is.na(df)] <- ""
+      write.csv(df, file, row.names = FALSE)
+    }
+  )
+
   # If the user click on the debug mode
   # A lot of prints to the stderr
   observeEvent(input$debugMode,{
