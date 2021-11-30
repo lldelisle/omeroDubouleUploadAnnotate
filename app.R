@@ -428,8 +428,20 @@ server <- function(input, output) {
     }
     fileOrDirToUpload <- input$fileOrDirToUpload
     depth <- input$depth
-    projectSelected <- input$projectSelected
-    datasetSelected <- input$datasetSelected
+    to_create <- "none"
+    if (input$projectSelected %in% names(my.ome$projects.ids)){
+      project_name_or_id <- my.ome$projects.ids[which(names(my.ome$projects.ids) == input$projectSelected)[1]]
+      if (input$datasetSelected %in% names(my.ome$datasets.ids)){
+        dataset_name_or_id <- my.ome$datasets.ids[which(names(my.ome$datasets.ids) == input$datsetSelected)[1]]
+      } else {
+        dataset_name_or_id <- input$datasetSelected
+        to_create <- "dataset"
+      }
+    } else {
+      project_name_or_id <- input$projectSelected
+      dataset_name_or_id <- input$datasetSelected
+      to_create <- "both"
+    }
     tmp.fn.password <- tempfile()
     cat(input$password, file = tmp.fn.password)
     valid.login <- my.ome$valid.login
@@ -443,10 +455,10 @@ server <- function(input, output) {
     if (debug.mode){
       cat(file = stderr(), paste0("bash external_scripts/upload_and_add_log.sh \"",
                                   paste(omero.path, host, username, tmp.fn.password,
-                                        depth, projectSelected, datasetSelected,
+                                        depth, project_name_or_id, dataset_name_or_id,
                                         paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
                                         sep = "\" \""),
-                                  "\" 2>&1 > \"", tmp.fn.output.and.error, "\""),
+                                  "\" ", to_create, " 2>&1 > \"", tmp.fn.output.and.error, "\""),
           "\n")
     }
     future_promise({
@@ -455,11 +467,11 @@ server <- function(input, output) {
         cat(file = stderr(), "HERE\n")
       }
       system(paste0("bash external_scripts/upload_and_add_log.sh \"",
-                   paste(omero.path, host, username, tmp.fn.password,
-                   depth, projectSelected, datasetSelected,
-                   paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
-                   sep = "\" \""),
-                   "\" 2>&1 > \"", tmp.fn.output.and.error, "\"")
+                    paste(omero.path, host, username, tmp.fn.password,
+                          depth, project_name_or_id, dataset_name_or_id,
+                          paste0(prefix.path, "/", fileOrDirToUpload), lastUploadFile,
+                          sep = "\" \""),
+                    "\" ", to_create, " 2>&1 > \"", tmp.fn.output.and.error, "\"")
       )
       if (! file.exists(lastUploadFile)){
         cat("Something went wrong.\n", file = lastUploadFile)

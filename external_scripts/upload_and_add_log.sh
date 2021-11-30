@@ -4,25 +4,28 @@ omero_server="$2"
 omero_user="$3"
 omero_password=$(cat "$4")
 depth=$5
-project_name=$6
-dataset_name=$7
+project_name_or_id=$6
+dataset_name_or_id=$7
 omero_dir_or_file=$8
 temp_file=$9
-echo "Start upload"
-${omero_path} import -s ${omero_server} -u ${omero_user} -w ${omero_password} --depth ${depth} -T Project:name:"${project_name}"/Dataset:name:"${dataset_name}" ${omero_dir_or_file} &> ${temp_file} 
-echo "Upload finished"
-# Using omero search may give strange results (see https://github.com/lldelisle/omeroDubouleUploadAnnotate/issues/5)
-# So the log is parsed to get the Dataset ID:
-dId=$(cat "${temp_file}" | grep "Import target specifies container: Dataset" | awk -F ":" 'NR==1{print $NF}')
-echo "Dataset id is $dId"
-if [ ! -z "$dId" ]; then
-    echo "Uploading $temp_file"
-    # Warning: omero upload gives a deprecation warning...
-    oFile=$(${omero_path} upload -s ${omero_server} -u ${omero_user} -w ${omero_password} $temp_file | awk '{print $NF}')
-    echo "Create FileAnnotation for $oFile"
-    fAnn=$(${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new FileAnnotation file=${oFile})
-    echo "Create Link between dataset and $fAnn"
-    ${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new DatasetAnnotationLink parent=Dataset:${dId} child=${fAnn}
-else
-    echo "Could not get dataset id from $temp_file"
+to_create=${10}
+if [ "$to_create" = "both" ]; then
+    # Create a project:
+    project_name_or_id=$(${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new Project name="${project_name_or_id}" | awk -F ":" '{print $NF}')
+    echo "Just created the new project ${project_name_or_id}"
 fi
+if [ "$to_create" = "both" ] || [ "$to_create" = "dataset" ]; then
+    dataset_name_or_id=$(${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new Dataset name="${dataset_name_or_id}" | awk -F ":" '{print $NF}')
+    echo "Just created the new dataset ${dataset_name_or_id}"
+    ${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new ProjectDatasetLink parent=Project:${project_name_or_id} child=Dataset:${dataset_name_or_id}
+fi
+echo "Start upload"
+${omero_path} import -s ${omero_server} -u ${omero_user} -w ${omero_password} --depth ${depth} -T Dataset:id:"${dataset_name_or_id}" ${omero_dir_or_file} &> ${temp_file}
+echo "Upload finished"
+echo "Uploading $temp_file"
+# Warning: omero upload gives a deprecation warning...
+oFile=$(${omero_path} upload -s ${omero_server} -u ${omero_user} -w ${omero_password} $temp_file | awk '{print $NF}')
+echo "Create FileAnnotation for $oFile"
+fAnn=$(${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new FileAnnotation file=${oFile})
+echo "Create Link between dataset and $fAnn"
+${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new DatasetAnnotationLink parent=Dataset:${dataset_name_or_id} child=${fAnn}
