@@ -20,7 +20,7 @@ if [ "$to_create" = "both" ] || [ "$to_create" = "dataset" ]; then
     ${omero_path} obj -s ${omero_server} -u ${omero_user} -w ${omero_password} new ProjectDatasetLink parent=Project:${project_name_or_id} child=Dataset:${dataset_name_or_id}
 fi
 echo "Start upload"
-${omero_path} import -s ${omero_server} -u ${omero_user} -w ${omero_password} --depth ${depth} -T Dataset:id:"${dataset_name_or_id}" ${omero_dir_or_file} &> ${temp_file}
+${omero_path} import -s ${omero_server} -u ${omero_user} -w ${omero_password} --depth ${depth} -T Dataset:id:"${dataset_name_or_id}" "${omero_dir_or_file}" &> ${temp_file}
 echo "Upload finished"
 echo "Uploading $temp_file"
 # Warning: omero upload gives a deprecation warning...
