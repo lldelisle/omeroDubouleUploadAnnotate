@@ -432,7 +432,7 @@ server <- function(input, output) {
     if (input$projectSelected %in% names(my.ome$projects.ids)){
       project_name_or_id <- my.ome$projects.ids[which(names(my.ome$projects.ids) == input$projectSelected)[1]]
       if (input$datasetSelected %in% names(my.ome$datasets.ids)){
-        dataset_name_or_id <- my.ome$datasets.ids[which(names(my.ome$datasets.ids) == input$datsetSelected)[1]]
+        dataset_name_or_id <- my.ome$datasets.ids[which(names(my.ome$datasets.ids) == input$datasetSelected)[1]]
       } else {
         dataset_name_or_id <- input$datasetSelected
         to_create <- "dataset"
