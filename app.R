@@ -128,6 +128,7 @@ server <- function(input, output) {
   my.ome <- reactiveValues(server = NULL, # Is either NULL or contains a valid connected server
                            valid.login = FALSE, # Is FALSE except if server contains a valid connected server
                            failed.login = FALSE, # Is FALSE except if the user clicked on the login button but it failed to create a valid connected server
+                           tmp.fn.password = NULL, # Path with the file where the password is stored
                            update = 0, # Counter to detect when the projects should be updated
                            update.keyval = 0, # Counter to detect when the key values should be fetched from OMERO
                            projects = NULL, # List of projects obtained from GetProjects.
@@ -175,6 +176,8 @@ server <- function(input, output) {
       my.ome$failed.login <- FALSE
       my.ome$update <- my.ome$update + 1
       my.ome$update.keyval <- my.ome$update.keyval + 1
+      my.ome$tmp.fn.password <- tempfile()
+      cat(input$password, file = my.ome$tmp.fn.password)
     } else {
       my.ome$valid.login <- FALSE
       my.ome$failed.login <- TRUE
@@ -229,15 +232,13 @@ server <- function(input, output) {
       cat(file = stderr(), "UPDATE KEYVAL\n")
     }
     if (my.ome$valid.login){
-      tmp.fn.password <- tempfile()
-      cat(input$password, file = tmp.fn.password)
       my.ome$existing.key.values <- read_yaml(text = 
                                                 system(
                                                   paste0(gsub("omero$", "python", omero.path),
                                                          " external_scripts/get_all_omero_key_values_in_yaml.py",
                                                          " --server omero-server.epfl.ch --user \'",
                                                          input$username, "\' --password \'",
-                                                         tmp.fn.password, "\'"),
+                                                         my.ome$tmp.fn.password, "\'"),
                                                   intern = T))
       
       if (my.ome$debug.mode){
@@ -442,8 +443,6 @@ server <- function(input, output) {
       dataset_name_or_id <- input$datasetSelected
       to_create <- "both"
     }
-    tmp.fn.password <- tempfile()
-    cat(input$password, file = tmp.fn.password)
     valid.login <- my.ome$valid.login
     debug.mode <- my.ome$debug.mode
     host <- my.ome$server@host
@@ -452,6 +451,7 @@ server <- function(input, output) {
     my.ome$lastUploadFile <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_upload.log"))
     lastUploadFile <- my.ome$lastUploadFile
     tmp.fn.output.and.error <- tempfile()
+    tmp.fn.password <- my.ome$tmp.fn.password
     if (debug.mode){
       cat(file = stderr(), paste0("bash external_scripts/upload_and_add_log.sh \"",
                                   paste(omero.path, host, username, tmp.fn.password,
@@ -1130,8 +1130,6 @@ server <- function(input, output) {
   
   # Dataframe with the result
   foundKVDF <- eventReactive(input$searchKV, {
-    tmp.fn.password <- tempfile()
-    cat(input$password, file = tmp.fn.password)
     key.vals.selected <- # key=value;key=value...
       paste(sapply(1:input$nbKV, function(id){paste(input[[paste0("searchKey", id)]], input[[paste0("searchValue", id)]],
                                                     sep = "=")}), collapse = ";")
@@ -1144,7 +1142,7 @@ server <- function(input, output) {
                                   " external_scripts/get_images_from_key_values.py",
                                   " --server omero-server.epfl.ch --user \'",
                                   input$username, "\' --password \'",
-                                  tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
+                                  my.ome$tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
                                   "\'", suffix, "\n"))
     }
     read.csv(text = system(
@@ -1152,7 +1150,7 @@ server <- function(input, output) {
              " external_scripts/get_images_from_key_values.py",
              " --server omero-server.epfl.ch --user \'",
              input$username, "\' --password \'",
-             tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
+             my.ome$tmp.fn.password, "\' --keyvalues \'", key.vals.selected,
              "\'", suffix),
       intern = T))
   })
@@ -1185,8 +1183,6 @@ server <- function(input, output) {
       return(paste0(gsub(" ", "_", Sys.time()), "_", who, "_key_values.csv"))
     },
     content = function(file) {
-      tmp.fn.password <- tempfile()
-      cat(input$password, file = tmp.fn.password)
       suffix <- ""
       if (input$useronly){
         suffix <- " --onlyUserProjects"
@@ -1196,7 +1192,7 @@ server <- function(input, output) {
                " external_scripts/get_all_key_values_per_image.py",
                " --server omero-server.epfl.ch --user \'",
                input$username, "\' --password \'",
-               tmp.fn.password, "\'", suffix),
+               my.ome$tmp.fn.password, "\'", suffix),
         intern = T)
       df <- read.csv(text = my.text)
       colnames(df) <-strsplit(my.text[1], ",")[[1]]
