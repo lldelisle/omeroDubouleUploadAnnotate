@@ -70,7 +70,15 @@ ui <- fluidPage(
                            uiOutput("CheckCurrentUploadIfPossible") # CheckUpload button only if logged in
                   ), 
                   tabPanel("Annotation",
-                           uiOutput("prepareDFIfPossible"), # Only display the button if the project and dataset exists 
+                           h3("First choose the level to annotate"),
+                           selectInput("annotationScale",
+                                       "At which scale do you want to annotate:",
+                                       choices = c("All my projects"="user",
+                                                   "All datasets in the selected project"="project",
+                                                   "All images in the selected dataset"="dataset"),
+                                       selected = "dataset",
+                                       multiple = F),
+                           uiOutput("prepareDFIfPossible"), # Only display the button if the project and/or dataset exists 
                            h3("Info from upload"),
                            uiOutput("addUploadInfoIfPossible"), # Only display the button if it is the good project, the good dataset and there was a successful upload
                            uiOutput("addPreviousUploadInfoIfPossible"), # Only display choices and button if the dataset exists and there are upload files
@@ -345,7 +353,9 @@ server <- function(input, output) {
         my.choices <- sapply(all.datasets.obj, function(ob){ob$getId()})
         names(my.choices) <- sapply(all.datasets.obj, function(ob){ob$getName()})
         my.ome$datasets.ids <- my.choices
-        if (nrow(my.ome$current.dataframe) > 0 && ! my.ome$dataset.df %in% names(my.choices)){
+        if (nrow(my.ome$current.dataframe) > 0 && 
+            ! my.ome$dataset.df %in% names(my.choices) &&
+            input$annotationScale == "dataset"){
           # The project changed we reset all dataframes
           my.ome$original.dataframe <- data.frame()
           my.ome$current.dataframe <- data.frame()
@@ -594,17 +604,21 @@ server <- function(input, output) {
       HTML("<h1>To annotate your data you need to login first.</h1>")
       # } else if (is.null(input$projectSelected) || is.null(input$datasetSelected)){
       #   HTML("<h1>Go to the Project Dataset tab (next to 'Login') to choose your dataset.</h1>")
-    } else if (! input$projectSelected %in% names(my.ome$projects.ids)){
+    } else if (input$annotationScale == "user" && ! input$useronly){
+      HTML("You first need to uncheck the box 'Display only the data from the logged-in user'")
+    } else if (input$annotationScale == "user" && length(my.ome$projects.ids) == 0){
+      HTML("You first need to upload data")
+    } else if (! input$projectSelected %in% names(my.ome$projects.ids) && input$annotationScale %in% c("project", "dataset")){
       HTML("You need to choose an existing project")
-    } else if (! input$datasetSelected %in% names(my.ome$datasets.ids)){
+    } else if (! input$datasetSelected %in% names(my.ome$datasets.ids) && input$annotationScale == "dataset"){
       HTML("You need to choose an existing dataset")
     } else {
       if (nrow(my.ome$current.dataframe) == 0){
-        header.text <- "<h3> First click here </h3>"
+        header.text <- "<h3> Then click here </h3>"
         button.text <- "Generate the dataframe from existing key values"
       } else {
-        header.text <- paste0("To regenerate the dataframe from OMERO Key values for ", input$datasetSelected, ". Click here <br/>")
-        button.text <- paste0("Re-generate")
+        header.text <- paste0("To (re)generate the dataframe at the bottom. Click here <br/>")
+        button.text <- paste0("(Re-)generate")
       }
       return(list(HTML(header.text),
                   actionButton("prepareDF", button.text)))
@@ -618,17 +632,48 @@ server <- function(input, output) {
     if (my.ome$debug.mode){
       cat(file = stderr(), "prepareDF changed\n")
     }
-    # Get the dataset object
-    my.datasets <- unlist(lapply(which(names(my.ome$projects.ids) == input$projectSelected),
-                                 function(i){getDatasets(my.ome$projects[[i]])}))
-    my.datasets.names <- sapply(my.datasets, function(my.d){my.d@dataobject$getName()})
-    my.ome$current.dataframe <- initiateDF(my.ome$server, my.datasets[[which(my.datasets.names == input$datasetSelected)]])
+    if (input$annotationScale == "user"){
+      suffix <- " --onlyUserProjects"
+      my.ome$project.df <- ""
+      my.ome$dataset.df <- ""
+    } else if(input$annotationScale == "project"){
+      suffix <- paste(" --selectedProject", my.ome$projects.ids[input$projectSelected][1])
+      my.ome$project.df <- input$projectSelected
+      my.ome$dataset.df <- ""
+    } else{ #} if(input$annotationScale == "dataset"){
+      suffix <- paste(" --selectedDataset", my.ome$datasets.ids[input$datasetSelected][1])
+      my.ome$project.df <- input$projectSelected
+      my.ome$dataset.df <- input$datasetSelected
+    }
+    if (my.ome$debug.mode){
+      cat(file = stderr(), paste0(gsub("omero$", "python", omero.path),
+                                  " external_scripts/get_all_key_values_per_image.py",
+                                  " --server omero-server.epfl.ch --user \'",
+                                  input$username, "\' --password \'",
+                                  my.ome$tmp.fn.password, "\'", suffix),
+          "\n")
+    }
+    my.text <- system(
+      paste0(gsub("omero$", "python", omero.path),
+             " external_scripts/get_all_key_values_per_image.py",
+             " --server omero-server.epfl.ch --user \'",
+             input$username, "\' --password \'",
+             my.ome$tmp.fn.password, "\'", suffix),
+      intern = T)
+    if (length(my.text) > 0){
+      df <- read.csv(text = my.text)
+      colnames(df) <-strsplit(my.text[1], ",")[[1]]
+    } else {
+      if (my.ome$debug.mode){
+        cat(file = stderr(), "No image\n")
+      }
+      df <- data.frame()
+    }
+    my.ome$current.dataframe <- df
     if (my.ome$debug.mode){
       cat(file = stderr(), "initiateDF OK\n")
     }
-    my.ome$original.dataframe <- my.ome$current.dataframe
-    my.ome$project.df <- input$projectSelected
-    my.ome$dataset.df <- input$datasetSelected
+    my.ome$original.dataframe <- df
     if (my.ome$debug.mode){
       cat(file = stderr(), "OK\n")
     }
@@ -647,6 +692,7 @@ server <- function(input, output) {
     if (! req(successUpload())){
       HTML("")
     } else if (nrow(my.ome$current.dataframe) == 0 || 
+               is.null(my.ome$dataset.df) ||
                input$projectSelected != my.ome$upload.project ||
                input$datasetSelected != my.ome$upload.dataset){
       HTML("To add upload info, you need to generate the dataframe from existing values with the corresponding project and dataset.")
@@ -679,7 +725,9 @@ server <- function(input, output) {
     if (nrow(my.ome$current.dataframe) == 0){
       # HTML("To add upload info from previous uplaods, you need to generate the dataframe from existing values.")
       HTML("")
-    } else {
+    } else if (my.ome$dataset.df == ""){
+      HTML("To add upload info from previous uploads, you need to generate the dataframe with a dataset.")
+    }else {
       my_dataset <- loadObject(my.ome$server, "DatasetData", unname(my.ome$datasets.ids[my.ome$dataset.df]))
       my_annotations <- getAnnotations(my_dataset)
       if (nrow(my_annotations) == 0){
@@ -728,7 +776,8 @@ server <- function(input, output) {
     if (is.null(input$imagesSel) || input$imagesSel == "all"){
       HTML("")
     } else {
-      list(selectInput("selectColumn", "Select the column used to select your images",
+      list(HTML("You can use columns in the dataframe of the bottom"),
+           selectInput("selectColumn", "Select the column used to select your images",
                        choices = colnames(my.ome$current.dataframe),
                        selected = my.ome$lastSelectedColumn),
            textInput("patternImages",
@@ -949,7 +998,8 @@ server <- function(input, output) {
         if (my.ome$debug.mode){
           cat(file = stderr(), "ELSE\n")
         }
-        extra.cols <- setdiff(colnames(my.ome$current.dataframe), c("id", "image.name"))
+        extra.cols <- setdiff(colnames(my.ome$current.dataframe),
+                              c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename"))
         existing.extra.cols <- intersect(extra.cols, colnames(my.ome$original.dataframe))
         new.extra.cols <- setdiff(extra.cols, colnames(my.ome$original.dataframe))
         output <- ""
@@ -1016,7 +1066,15 @@ server <- function(input, output) {
   # Use a file name with all info
   output$downloadDF <- downloadHandler(
     filename = function() {
-      paste0(my.ome$project.df, "__", my.ome$dataset.df, "__", gsub(" ", "_", Sys.time()), ".csv")
+      prefix <- ""
+      if (input$annotationScale == "user"){
+        prefix <- "all_mine"
+      } else if (input$annotationScale == "project"){
+        prefix <- my.ome$project.df
+      } else { # dataset
+        prefix <- paste0(my.ome$project.df, "__", my.ome$dataset.df)
+      }
+      return(paste0(prefix, "__", gsub(" ", "_", Sys.time()), ".csv"))
     },
     content = function(file) {
       df <- my.ome$current.dataframe
@@ -1035,22 +1093,34 @@ server <- function(input, output) {
   })
   
   # When the user click on the button
-  # This will attach a csv to the dataset
+  # This will attach a csv to each of the dataset
   observeEvent(input$uploadDFtoOMERO, {
-    # The csv should not have the "id" col but the "picture.name"
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "Trying to attach files.\n")
+    }
+    # The csv should not have the "id" col, nor the one related to the dataset or project
+    # but the "image.name"
     # If there is a duplicated picture name no csv will be attached.
-    output <- NULL
-    df <- my.ome$current.dataframe
-    df[is.na(df)] <- ""
-    if (anyDuplicated(my.ome$current.dataframe$picture.name) != 0){
-      output <- "There are duplicated picture name. No csv will be attached to the dataset"
-    } else {
-      tmp.fn <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_key_values.txt"))
-      write.csv(df[, c("image.name", 
-                       setdiff(colnames(df), c("id", "image.name")))],
-                file = tmp.fn, row.names = FALSE)
-      my_dataset <- loadObject(my.ome$server, "DatasetData", unname(my.ome$datasets.ids[my.ome$dataset.df]))
-      invisible(attachFile(my_dataset, tmp.fn))
+    # The best would be to check for each dataset if something changed before uploading.
+    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
+    for (my.dataset.id in unique(my.ome$current.dataframe$dataset.id)){
+      if (my.ome$debug.mode){
+        cat(file = stderr(), "Trying to attach to ", my.dataset.id, ".\n")
+      }
+      df <- my.ome$current.dataframe[my.ome$current.dataframe$dataset.id == my.dataset.id, ]
+      df[is.na(df)] <- ""
+      if (anyDuplicated(df$image.name) != 0){
+        if (my.ome$debug.mode){
+          cat(file = stderr(), "There are duplicated picture name. No csv will be attached to the dataset", my.dataset.id, ".\n")
+        }
+      } else {
+        tmp.fn <- file.path(tempdir(), paste0(gsub(" ", "_", Sys.time()), "_key_values.txt"))
+        write.csv(df[, c("image.name", 
+                         setdiff(colnames(df), columns.to.ignore))],
+                  file = tmp.fn, row.names = FALSE)
+        my_dataset <- loadObject(my.ome$server, "DatasetData", my.dataset.id)
+        invisible(attachFile(my_dataset, tmp.fn))
+      }
     }
   })
   
@@ -1058,28 +1128,32 @@ server <- function(input, output) {
   # This will add the key values to images
   # This uses a python script
   outputUploadDF <- eventReactive(input$uploadDFtoOMERO, {
-    output <- NULL
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "outputUploadDF\n")
+    }
     df <- my.ome$current.dataframe
     df[is.na(df)] <- ""
     tmp.fn <- tempfile()
     write.csv(df, file = tmp.fn, row.names = FALSE)
-    tmp.fn.password <- tempfile()
-    cat(input$password, file = tmp.fn.password)
+    tmp.fn.password <- my.ome$tmp.fn.password
+    username <- input$username
     # Contrary to the batch annotation this will erase
     # current key values.
-    system(
-      paste0(gsub("omero$", "python", omero.path),
-             " external_scripts/update_key_values_from_file.py",
-             " --server omero-server.epfl.ch --user \'",
-             input$username, "\' --password \'",
-             tmp.fn.password, "\' --file \'",
-             tmp.fn, "\' --sep ','  2>&1"),
-      intern = T)
+    future_promise({ 
+      system(
+        paste0(gsub("omero$", "python", omero.path),
+               " external_scripts/update_key_values_from_file.py",
+               " --server omero-server.epfl.ch --user \'",
+               username, "\' --password \'",
+               tmp.fn.password, "\' --file \'",
+               tmp.fn, "\' --sep ','  2>&1"),
+        intern = T)
+    })
   })
   
   # uploadDFtoOMERO is launched only if this output is active
   output$outputFUploadDF <- renderPrint({
-    cat(outputUploadDF(), sep = "\n")
+    outputUploadDF() %...>% cat(sep = "\n")
   })
   
   # UI with the number of key to use. Not more than possible keys
@@ -1200,7 +1274,7 @@ server <- function(input, output) {
       write.csv(df, file, row.names = FALSE)
     }
   )
-
+  
   # If the user click on the debug mode
   # A lot of prints to the stderr
   observeEvent(input$debugMode,{

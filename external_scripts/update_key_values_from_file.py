@@ -74,6 +74,7 @@ def readCSV(file, sep):
 
 
 def set_all_key_values(df, username, password, host, port):
+    columns_to_ignore = ["id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename"]
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
         new_keys = []
         for i in df.index:
@@ -94,7 +95,7 @@ def set_all_key_values(df, username, password, host, port):
             new_keys_image = []
             complement_kv = {}
             for key in my_dict:
-                if key in ['id', 'image.name']:
+                if key in columns_to_ignore:
                     continue
                 if isinstance(my_dict[key], float) and np.isnan(my_dict[key]):
                     continue
