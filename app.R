@@ -1191,14 +1191,15 @@ server <- function(input, output) {
       if (input$useronly){
         suffix <- " --onlyUserProjects"
       }
-      df <- 
-        read.csv(text = system(
-          paste0(gsub("omero$", "python", omero.path),
-                 " external_scripts/get_all_key_values_per_image.py",
-                 " --server omero-server.epfl.ch --user \'",
-                 input$username, "\' --password \'",
-                 tmp.fn.password, "\'", suffix),
-          intern = T))
+      my.text <- system(
+        paste0(gsub("omero$", "python", omero.path),
+               " external_scripts/get_all_key_values_per_image.py",
+               " --server omero-server.epfl.ch --user \'",
+               input$username, "\' --password \'",
+               tmp.fn.password, "\'", suffix),
+        intern = T)
+      df <- read.csv(text = my.text)
+      colnames(df) <-strsplit(my.text[1], ",")[[1]]
       df[is.na(df)] <- ""
       write.csv(df, file, row.names = FALSE)
     }
