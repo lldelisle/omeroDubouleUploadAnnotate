@@ -80,8 +80,12 @@ ui <- fluidPage(
                                        multiple = F),
                            uiOutput("prepareDFIfPossible"), # Only display the button if the project and/or dataset exists 
                            h3("Info from upload"),
+                           p("Info from upload goes directly to the bottom dataframe."),
                            uiOutput("addUploadInfoIfPossible"), # Only display the button if it is the good project, the good dataset and there was a successful upload
                            uiOutput("addPreviousUploadInfoIfPossible"), # Only display choices and button if the dataset exists and there are upload files
+                           h3("Acquisition date"),
+                           p("Info from acquisition date goes directly to the bottom dataframe."),
+                           uiOutput("addAcquisitionDateIfPossible"), # Only display the button if a current.df exists
                            h3("Add annotations"),
                            # First the images needs to be selected
                            selectInput("imagesSel",
@@ -760,6 +764,57 @@ server <- function(input, output) {
       cat(file = stderr(), str(df), "\n")
     }
     my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, parseImportOutput(df$V1), my.ome$debug.mode)
+  })
+  
+  output$addAcquisitionDateIfPossible <- renderUI({
+    if (nrow(my.ome$current.dataframe) == 0){
+      # HTML("To add upload info from previous uplaods, you need to generate the dataframe from existing values.")
+      HTML("")
+    } else {
+      actionButton("addAcquisitionDate", "Add info from acquisition date")
+    }
+  })
+  
+  # If the user click on addAcquisitionDate
+  # the dataframes are merged
+  observeEvent(input$addAcquisitionDate, {
+    # First get the new dataframe with the python script
+    
+    if (my.ome$debug.mode){
+      cat(file = stderr(), "addAcquisitionDate changed\n")
+    }
+    if (input$annotationScale == "user"){
+      suffix <- " --onlyUserProjects"
+    } else if(input$annotationScale == "project"){
+      suffix <- paste(" --selectedProject", my.ome$projects.ids[input$projectSelected][1])
+    } else{ #} if(input$annotationScale == "dataset"){
+      suffix <- paste(" --selectedDataset", my.ome$datasets.ids[input$datasetSelected][1])
+    }
+    if (my.ome$debug.mode){
+      cat(file = stderr(), paste0(gsub("omero$", "python", omero.path),
+                                  " external_scripts/get_acquisition_date_per_image.py",
+                                  " --server omero-server.epfl.ch --user \'",
+                                  input$username, "\' --password \'",
+                                  my.ome$tmp.fn.password, "\'", suffix),
+          "\n")
+    }
+    my.text <- system(
+      paste0(gsub("omero$", "python", omero.path),
+             " external_scripts/get_acquisition_date_per_image.py",
+             " --server omero-server.epfl.ch --user \'",
+             input$username, "\' --password \'",
+             my.ome$tmp.fn.password, "\'", suffix),
+      intern = T)
+    if (length(my.text) > 0){
+      df <- read.csv(text = my.text)
+      colnames(df) <-strsplit(my.text[1], ",")[[1]]
+    } else {
+      if (my.ome$debug.mode){
+        cat(file = stderr(), "No image\n")
+      }
+      return()
+    }
+    my.ome$current.dataframe <- mergeNicely(my.ome$current.dataframe, df, my.ome$debug.mode)
   })
   
   # Render the dataframes
