@@ -37,19 +37,19 @@ ui <- fluidPage(
                            helpText("Use your omero credentials:"),
                            textInput("username", placeholder="Username", label = tagList(icon("user"), "Username")),
                            passwordInput("password", placeholder="Password", label = tagList(icon("unlock-alt"), "Password")),
-                           actionButton("login", label = "LOG IN"),
+                           actionButton("login", label = div(icon("registered"), icon("python"), "LOG IN")),
                            uiOutput("loginUI") # This will give you a message with the state of your login
                   ),
                   # Project Dataset where you select your project / dataset
                   tabPanel("Project Dataset",
                            checkboxInput("useronly", "Display only the data from the logged-in user", value = T),
-                           actionButton("update", label = "Update choices in Project/Dataset lists"),
+                           actionButton("update", label = "Update choices in Project/Dataset lists", icon = icon("registered")),
                            uiOutput("projectSelect"),
                            uiOutput("datasetSelect"),
                            textOutput("lastUpload"), # Gives you the status of the last upload
                            textOutput("currentKeyval"), # Gives you the Project/Dataset used in the Annotation tab
-                           actionButton("updateKeyValues", label = "Reset choices in key values lists"),
-                           actionButton("disconnect", label = "Disconnect")
+                           actionButton("updateKeyValues", label = "Reset choices in key values lists", icon = icon("python")),
+                           actionButton("disconnect", label = "Disconnect", icon = icon("registered"))
                   )
       )
     ),
@@ -63,7 +63,8 @@ ui <- fluidPage(
                            textInput("fileOrDirToUpload", label = "Input file or directory"),
                            numericInput("depth", label = "Number of directories to scan down", value = 4),
                            h3("Check path (no need to login)"),
-                           actionButton("checkUpload", "Check what will be uploaded."),
+                           actionButton("checkUpload", "Check what will be uploaded.", icon = icon("hashtag"),
+                                        style = "background-color : #ffd56a"),
                            helpText("It can be long... Be patient. Once done an output will be printed below."),
                            verbatimTextOutput("outputF"),
                            uiOutput("UploadIfPossible"), # Upload button on output only if logged in
@@ -106,7 +107,7 @@ ui <- fluidPage(
                            # They are integrated to the data to upload
                            h3("Table to upload to OMERO"),
                            dataTableOutput("currentDF"),
-                           downloadButton("downloadDF", "Download this table"),
+                           downloadButton("downloadDF", div(icon("download"), icon("registered"), "Download this table"), icon = NULL),
                            uiOutput("currentDFstatus"),
                            uiOutput("uploadDFIfNeeded"), # Only display the button if there is a change
                            helpText("Once the key values are updated an output will be printed below."),
@@ -116,13 +117,13 @@ ui <- fluidPage(
                            uiOutput("nbKVUI"), # UI with the number of KV to use to filter
                            fluidRow(column(width = 4, uiOutput("searchKselect")), # One column with the keys
                                     column(width = 4, uiOutput("searchVselect"))), # One column with the values
-                           actionButton("searchKV", "Search"), # Launch the query
+                           actionButton("searchKV", "Search", icon = icon("python")), # Launch the query
                            dataTableOutput("foundKV"), # dataframe with results
-                           downloadButton("downloadFoundDF", "Download this table")
+                           downloadButton("downloadFoundDF", div(icon("download"), icon("registered"), "Download this table"), icon = NULL)
                   ), 
                   tabPanel("Download",
                            helpText("Mind the checkbox above the project selection to see if you want all or only yours."),
-                           downloadButton("downloadAllKV", "Download table with all images with key values")
+                           downloadButton("downloadAllKV", div(icon("download"), icon("python"), "Download table with all images with key values"), icon = NULL)
                   ), 
                   tabPanel("Debug",
                            checkboxInput("debugMode", "Print to the standard out", value = F),
@@ -430,7 +431,8 @@ server <- function(input, output) {
     } else {
       list(
         h3("Upload"),
-        actionButton("upload", "Upload using parameters above."),
+        actionButton("upload", "Upload using parameters above.", icon = icon("hashtag"),
+                     style = "background-color : #ffd56a"),
         helpText("It can be super long... Be patient. Once done an output will be printed below."),
         verbatimTextOutput("shortOutputUpload"))
     }
@@ -564,7 +566,7 @@ server <- function(input, output) {
     } else {
       list(
         h3("On going uploads"),
-        actionButton("checkCurrentUpload", "Check which are the uploads on going."),
+        actionButton("checkCurrentUpload", "Check which are the uploads on going.", icon = icon("hashtag")),
         dataTableOutput("currentUpload"))
     }
   })
@@ -625,7 +627,7 @@ server <- function(input, output) {
         button.text <- paste0("(Re-)generate")
       }
       return(list(HTML(header.text),
-                  actionButton("prepareDF", button.text)))
+                  actionButton("prepareDF", button.text, icon = icon("python"))))
     }
   })
   
@@ -706,7 +708,7 @@ server <- function(input, output) {
     } else if (my.ome$project.df != my.ome$upload.project || my.ome$dataset.df != my.ome$upload.dataset) {
       HTML("The project/dataset used in the current dataframe is not the same as the one from last upload so no upload info can be added.")
     } else {
-      actionButton("addUploadInfo", "Add info from upload")
+      actionButton("addUploadInfo", "Add info from upload", icon = icon("registered"))
     }
   })
   
@@ -745,7 +747,7 @@ server <- function(input, output) {
           upload.files.ids <- upload.files.ids[order(names(upload.files.ids))]
           list(selectInput("previousUploadFileID", "Select the file for which you want to add the info",
                            choices = upload.files.ids),
-               actionButton("addPreviousUploadInfo", "Add info from this upload"))
+               actionButton("addPreviousUploadInfo", "Add info from this upload", icon = icon("registered")))
         }
       }
     }
@@ -771,7 +773,7 @@ server <- function(input, output) {
       # HTML("To add upload info from previous uplaods, you need to generate the dataframe from existing values.")
       HTML("")
     } else {
-      actionButton("addAcquisitionDate", "Add info from acquisition date")
+      actionButton("addAcquisitionDate", "Add info from acquisition date", icon = icon("python"))
     }
   })
   
@@ -923,7 +925,7 @@ server <- function(input, output) {
                        choices = my.choices,
                        options = list(create = TRUE)
         ),
-        actionButton("addKeyVal", "Add this key/value")
+        actionButton("addKeyVal", "Add this key/value", icon = icon("registered"))
       )
     } else {
       list(selectInput("selectColumnValue", "Select the column used to guess your value",
@@ -935,7 +937,8 @@ server <- function(input, output) {
            numericInput("splitPos",
                         "Which position?",
                         value = my.ome$lastSplitPosition),
-           actionButton("addKeyValSplit", "Fill the dataframe with this info"))
+           actionButton("addKeyValSplit", "Fill the dataframe with this info", icon = icon("registered"))
+           )
     }
       
     } 
@@ -1005,7 +1008,10 @@ server <- function(input, output) {
         }
         return(c(output,
                  list(
-                   actionButton("mergeToCurrent", "Merge with the existing key values."))))
+                   actionButton("mergeToCurrent", "Merge with the existing key values.", icon = icon("registered"))
+                   )
+                 )
+               )
       }
     }
   })
@@ -1143,7 +1149,8 @@ server <- function(input, output) {
     if (my.ome$current.is.ori){
       HTML("")
     } else {
-      actionButton("uploadDFtoOMERO", "Upload this data frame to OMERO and update the key values")
+      actionButton("uploadDFtoOMERO", div(icon("registered"), icon("python"), "Upload this data frame to OMERO and update the key values"),
+                   style = "background-color : #ffd56a")
     }
   })
   
