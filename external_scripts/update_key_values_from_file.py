@@ -73,23 +73,29 @@ def readCSV(file, sep):
     return(keyvalsdf)
 
 
-def set_all_key_values(df, username, password, host, port):
+def set_all_key_values(df, username, password, host, port, replace=False):
     columns_to_ignore = ["id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename"]
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
         new_keys = []
+        deleted_keys = []
         for i in df.index:
             my_dict = df.loc[i].to_dict()
             my_image = conn.getObject("Image", int(my_dict['id']))
-            kv = {}
+            existing_kv = {}
             for ann in my_image.listAnnotations():
                 if( isinstance(ann, omero.gateway.MapAnnotationWrapper) ):
                     kvs = ann.getValue()
                     for k,v in kvs:
                         # OMERO allow to have multiple values for the same key.
                         # Here only the first value is kept.
-                        if not (k in kv):
-                            kv[k] = v
-            changed = False
+                        if not (k in existing_kv):
+                            existing_kv[k] = v
+            if replace:
+                kv = {}
+                changed = True
+            else:
+                kv = existing_kv.copy()
+                changed = False
             msg_adding = ""
             msg_changing = ""
             new_keys_image = []
@@ -103,7 +109,7 @@ def set_all_key_values(df, username, password, host, port):
                     msg_changing += f"Changing {kv[key]} to {my_dict[key]} for {key} for {my_image.getName()}"
                     msg_changing += "\n"
                     changed = True
-                if key not in kv:
+                if key not in existing_kv:
                     if key not in new_keys:
                         msg_adding += f"Adding {key}."
                         msg_adding += "\n"
@@ -116,14 +122,21 @@ def set_all_key_values(df, username, password, host, port):
                 msgs_to_print = msg_adding
                 try:
                     remove_MapAnnotations(conn, 'Image', int(my_dict['id']))
-                    dict_to_add = kv
-                    msgs_to_print += msg_changing
                 except Exception as e:
                     if msg_changing != "":
                         print("Could not delete the current annotation.")
                         print("Desired changes that failed is:")
                         print(msg_changing)
                     dict_to_add = complement_kv
+                else:
+                    dict_to_add = kv
+                    msgs_to_print += msg_changing
+                    new_missing_keys = [k for k in existing_kv if (not k in kv and not k in deleted_keys)]
+                    if len(new_missing_keys) > 0:
+                        for key in new_missing_keys:
+                            msgs_to_print += f"Deleting {key}."
+                            msgs_to_print += "\n"
+                            deleted_keys.append(key)
                 if len(dict_to_add) > 0:
                     map_ann = omero.gateway.MapAnnotationWrapper(conn)
                     namespace = omero.constants.metadata.NSCLIENTMAPANNOTATION
@@ -150,6 +163,8 @@ argp.add_argument("-f", "--file", help="CSV with key values with header."
                   " One row per image of the dataset."
                   " One row must be 'id'")
 argp.add_argument("--sep", default  =',', help="Field separator in the file.")
+argp.add_argument("--replace", action="store_true",
+                  help="Will put the key values in the file but not keep existing key values.")
 
 args = argp.parse_args()
 if os.path.exists(args.password):
@@ -161,4 +176,5 @@ else:
 key_values_df = readCSV(args.file, args.sep)
 set_all_key_values(key_values_df,
                    args.user, password,
-                   args.server, args.port)
+                   args.server, args.port,
+                   args.replace)

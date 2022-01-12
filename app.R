@@ -116,13 +116,17 @@ ui <- fluidPage(
                            dataTableOutput("toMergeDF"),
                            uiOutput("mergeDFIfPossible"), # Only display the button if there is new info
                            # They are integrated to the data to upload
+                           h3("Remove columns from the table to upload:"),
+                           uiOutput("colsToDeleteIfPossible"), # Only display the button if there are keys in the current.df
+                           uiOutput("deleteKeyButtonIfPossible"), # Only display the button if there are keys in the current.df
                            h3("Table to upload to OMERO"),
                            dataTableOutput("currentDF"),
                            downloadButton("downloadDF", div(icon("download"), icon("registered"), "Download this table"), icon = NULL),
                            uiOutput("currentDFstatus"),
-                           uiOutput("uploadDFIfNeeded"), # Only display the button if there is a change
+                           uiOutput("uploadDFIfNeeded"), # Only display the buttons if there is a change
                            helpText("Once the key values are updated an output will be printed below."),
-                           verbatimTextOutput("outputFUploadDF") # Get the output of the upload key values script
+                           verbatimTextOutput("outputFUploadDF"), # Get the output of the upload key values script
+                           helpText("Once done, please regenerate the table to further work on it.")
                   ),
                   tabPanel("Simple Search",
                            uiOutput("nbKVUI"), # UI with the number of KV to use to filter
@@ -176,7 +180,8 @@ server <- function(input, output) {
                            lastSelectedColumnValue = "image.name", # Just used to keep what has been selected before
                            lastSplitCharacter = "_", # Just used to keep what has been selected before
                            lastSplitPosition = 1, # Just used to keep what has been selected before
-                           debug.mode = FALSE # Logical whether there should be print
+                           debug.mode = FALSE, # Logical whether there should be print
+                           confirm.delete = 0 # Counter to detect when the dialog should show
                            
   )
   # This reactive value is separated as it depends on future promise
@@ -949,7 +954,7 @@ server <- function(input, output) {
                         "Which position?",
                         value = my.ome$lastSplitPosition),
            actionButton("addKeyValSplit", "Fill the dataframe with this info", icon = icon("registered"))
-           )
+      )
     }
       
     } 
@@ -1020,9 +1025,8 @@ server <- function(input, output) {
         return(c(output,
                  list(
                    actionButton("mergeToCurrent", "Merge with the existing key values.", icon = icon("registered"))
-                   )
                  )
-               )
+        ))
       }
     }
   })
@@ -1047,6 +1051,41 @@ server <- function(input, output) {
     my.ome$toMerge.dataframe <- data.frame()
   })
   
+  # Show a selectInput if there are keys:
+  output$colsToDeleteIfPossible <- renderUI({
+    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
+    if (length(setdiff(colnames(my.ome$current.dataframe), columns.to.ignore)) > 0){
+      selectInput("colnameToDelete",
+                  "Which key do you want to remove",
+                  setdiff(colnames(my.ome$current.dataframe), columns.to.ignore))
+    } else {
+      HTML("")
+    }
+  })
+  
+  # Show an action button adapted to the colnameToDelete
+  output$deleteKeyButtonIfPossible <- renderUI({
+    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
+    if (length(setdiff(colnames(my.ome$current.dataframe), columns.to.ignore)) > 0){
+      if (is.null(input$colnameToDelete)){
+        return(HTML(""))
+      }
+      if (! input$colnameToDelete %in% colnames(my.ome$original.dataframe)){
+        label <- paste("delete the column", input$colnameToDelete)
+      } else {
+        label <- paste("delete the existing key", input$colnameToDelete)
+      }
+      actionButton("deleteCol", label, icon = icon("registered"))
+    } else {
+      HTML("")
+    }
+  })
+  
+  # Delete the column when clicked on deleteCol
+  observeEvent(input$deleteCol, {
+    my.ome$current.dataframe[, input$colnameToDelete] <- NULL
+  })
+  
   # Display messages on differences
   # between current.dataframe and original.dataframe
   output$currentDFstatus <- renderUI({
@@ -1059,6 +1098,7 @@ server <- function(input, output) {
       my.ome$current.is.ori <- TRUE
     } else {
       if (ncol(my.ome$original.dataframe) == ncol(my.ome$current.dataframe) &&
+          all(sort(colnames(my.ome$original.dataframe)) == sort(colnames(my.ome$current.dataframe))) &&
           all(is.na(my.ome$original.dataframe) == is.na(my.ome$current.dataframe[match(my.ome$original.dataframe$id, my.ome$current.dataframe$id),
                                                                                  colnames(my.ome$original.dataframe)])) &&
           all(my.ome$original.dataframe == my.ome$current.dataframe[match(my.ome$original.dataframe$id, my.ome$current.dataframe$id),
@@ -1129,6 +1169,12 @@ server <- function(input, output) {
             }
           }
         }
+        missing.cols <- setdiff(colnames(my.ome$original.dataframe), colnames(my.ome$current.dataframe))
+        if (length(missing.cols) > 0){
+          final.output.text <- c(final.output.text, 
+                                 "Warning: this will erase some keys:",
+                                 paste(missing.cols, collapse = ","))
+        }
       }
     }
     HTML(paste(final.output.text, collapse = "<br/>"))
@@ -1160,8 +1206,60 @@ server <- function(input, output) {
     if (my.ome$current.is.ori){
       HTML("")
     } else {
-      actionButton("uploadDFtoOMERO", div(icon("registered"), icon("python"), "Upload this data frame to OMERO and update the key values"),
-                   style = "background-color : #ffd56a")
+      missing.cols <- setdiff(colnames(my.ome$original.dataframe), colnames(my.ome$current.dataframe))
+      if (length(missing.cols) > 0){
+        if (is.null(input$deleteExistingKey) || input$deleteExistingKey == "no"){
+          list(actionButton("putBackDeletedKeys", "put back the original keys deleted", icon = icon("registered")),
+               actionButton("confirmUpload", "confirm upload", icon = icon("registered")))
+        } else {
+          list(actionButton("changedDeleteKey", "I changed my mind on deleting keys", icon = icon("registered")),
+               actionButton("uploadDFtoOMERO", div(icon("registered"), icon("python"), "Upload this data frame to OMERO and update the key values"),
+                            style = "background-color : #ffd56a"))
+        }
+      } else {
+        actionButton("uploadDFtoOMERO", div(icon("registered"), icon("python"), "Upload this data frame to OMERO and update the key values"),
+                     style = "background-color : #ffd56a")
+      }
+      
+    }
+  })
+  
+  # Update confirm.delete with confirmUpload button
+  observeEvent(input$confirmUpload, {
+    if (! is.null(input$confirmUpload) && input$confirmUpload > 0){
+      my.ome$confirm.delete <- my.ome$confirm.delete + 1
+    }
+  })
+  
+  # Update confirm.delete with changedDeleteKey button
+  observeEvent(input$changedDeleteKey, {
+    if (! is.null(input$changedDeleteKey) && input$changedDeleteKey > 0){
+      my.ome$confirm.delete <- my.ome$confirm.delete + 1
+    }
+  })
+  
+  # Show a dialog to confirm the deletion of existing keys
+  observeEvent(my.ome$confirm.delete, {
+    missing.cols <- setdiff(colnames(my.ome$original.dataframe), colnames(my.ome$current.dataframe))
+    if (length(missing.cols) > 0){
+      showModal(modalDialog(
+        title="Delete an existing key",
+        "The upload will delete an existing key, are you sure you want to upload?",
+        tagList(radioButtons("deleteExistingKey", label = "Delete existing keys at upload",
+                             choices = c("yes", "no"),
+                             selected = "no")
+        ),
+        footer = modalButton("Done")
+      ))
+    }
+  })
+  
+  # Put the deleted key from original dataframe
+  observeEvent(input$putBackDeletedKeys, {
+    missing.cols <- setdiff(colnames(my.ome$original.dataframe), colnames(my.ome$current.dataframe))
+    if (length(missing.cols) > 0){
+      df.to.merge <- my.ome$original.dataframe[, c("id", missing.cols)]
+      my.ome$current.dataframe <- merge(my.ome$current.dataframe, df.to.merge)
     }
   })
   
@@ -1198,7 +1296,7 @@ server <- function(input, output) {
   })
   
   # When the user click on the button
-  # This will add the key values to images
+  # This will add/delete the key values to images
   # This uses a python script
   outputUploadDF <- eventReactive(input$uploadDFtoOMERO, {
     if (my.ome$debug.mode){
@@ -1210,6 +1308,16 @@ server <- function(input, output) {
     write.csv(df, file = tmp.fn, row.names = FALSE)
     tmp.fn.password <- my.ome$tmp.fn.password
     username <- input$username
+    if (! is.null(input$deleteExistingKey) && input$deleteExistingKey == "yes"){
+      missing.cols <- setdiff(colnames(my.ome$original.dataframe), colnames(my.ome$current.dataframe))
+      if (length(missing.cols) > 0){
+        suffix <- "--replace"
+      } else {
+        suffix <- ""
+      }
+    } else {
+      suffix <- ""
+    }
     # Contrary to the batch annotation this will erase
     # current key values.
     future_promise({ 
@@ -1219,7 +1327,7 @@ server <- function(input, output) {
                " --server omero-server.epfl.ch --user \'",
                username, "\' --password \'",
                tmp.fn.password, "\' --file \'",
-               tmp.fn, "\' --sep ','  2>&1"),
+               tmp.fn, "\' --sep ',' ", suffix, " 2>&1"),
         intern = T)
     })
   })
