@@ -52,7 +52,17 @@ ui <- fluidPage(
                            actionButton("updateKeyValues", label = "Reset choices in key values lists", icon = icon("python")),
                            actionButton("disconnect", label = "Disconnect", icon = icon("registered"))
                   )
-      )
+      ),
+      br(),
+      br(),
+      h4("Legend of icons:"),
+      p(div(icon("registered"), "Uses R code")),
+      p(div(icon("python"), "Uses python code")),
+      p(div(icon("hashtag"), "Uses bash code")),
+      h4("Legend of colors:"),
+      actionButton("useless1", HTML("This action blocks<br/>the shiny app for everyone.")),
+      actionButton("useless2", "This action blocks only this page.",
+                   style = "background-color : #ffd56a")
     ),
     
     # Main panel
