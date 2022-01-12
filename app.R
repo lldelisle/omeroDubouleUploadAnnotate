@@ -23,6 +23,14 @@ omero.path <- "/home/ldelisle/.conda/envs/omero/bin/omero"
 prefix.path <- "/home/ldelisle/mountDuboule/"
 host.url <- "omero-server.epfl.ch"
 
+# These are the columns created by get_all_key_values_per_image.py
+# That should not be uploaded to omero as key values
+columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
+
+# Keys that cannot be set manually:
+protected.keys <- c(columns.to.ignore,
+                    "acquisition.day", "acquisition.time")
+
 # Define UI for application that draws a histogram
 ui <- fluidPage(
   
@@ -175,7 +183,7 @@ server <- function(input, output) {
                            toMerge.dataframe = data.frame(), # Dataframe with potentially a subset of rows compare to other dataframe and new columns to be added to current.dataframe
                            current.is.ori = TRUE, # If there are differences between original.dataframe and current.dataframe
                            existing.key.values = list(), # A named list where names are keys and items are vectors with used values in OMERO by the group
-                           lastKeySelected = "image.name", # Just used to keep what has been selected before
+                           lastKeySelected = "Stage", # Just used to keep what has been selected before
                            lastSelectedColumn = "image.name", # Just used to keep what has been selected before
                            lastSelectedPattern = "", # Just used to keep what has been selected before
                            lastSelectionValue = "fixed", # Just used to keep what has been selected before
@@ -898,7 +906,9 @@ server <- function(input, output) {
       HTML("")
     } else {
       selectizeInput("selectKey", "Select the key for your selected images",
-                     choices = unique(c(names(my.ome$existing.key.values), my.ome$lastKeySelected)),
+                     choices = unique(c(setdiff(names(my.ome$existing.key.values),
+                                                protected.keys),
+                                        my.ome$lastKeySelected)),
                      options = list(create = TRUE),
                      selected = my.ome$lastKeySelected
       )
@@ -1059,7 +1069,6 @@ server <- function(input, output) {
   
   # Show a selectInput if there are keys:
   output$colsToDeleteIfPossible <- renderUI({
-    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
     if (length(setdiff(colnames(my.ome$current.dataframe), columns.to.ignore)) > 0){
       selectInput("colnameToDelete",
                   "Which key do you want to remove",
@@ -1071,7 +1080,6 @@ server <- function(input, output) {
   
   # Show an action button adapted to the colnameToDelete
   output$deleteKeyButtonIfPossible <- renderUI({
-    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
     if (length(setdiff(colnames(my.ome$current.dataframe), columns.to.ignore)) > 0){
       if (is.null(input$colnameToDelete)){
         return(HTML(""))
@@ -1279,7 +1287,6 @@ server <- function(input, output) {
     # but the "image.name"
     # If there is a duplicated picture name no csv will be attached.
     # The best would be to check for each dataset if something changed before uploading.
-    columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
     for (my.dataset.id in unique(my.ome$current.dataframe$dataset.id)){
       if (my.ome$debug.mode){
         cat(file = stderr(), "Trying to attach to ", my.dataset.id, ".\n")
