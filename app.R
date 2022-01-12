@@ -1123,7 +1123,7 @@ server <- function(input, output) {
     filename = function() {
       prefix <- ""
       if (input$annotationScale == "user"){
-        prefix <- "all_mine"
+        prefix <- input$username
       } else if (input$annotationScale == "project"){
         prefix <- my.ome$project.df
       } else { # dataset
