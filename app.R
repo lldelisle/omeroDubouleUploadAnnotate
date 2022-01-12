@@ -61,6 +61,7 @@ ui <- fluidPage(
       p(div(icon("hashtag"), "Uses bash code")),
       h4("Legend of colors:"),
       actionButton("useless1", HTML("This action blocks<br/>the shiny app for everyone.")),
+      br(),
       actionButton("useless2", "This action blocks only this page.",
                    style = "background-color : #ffd56a")
     ),
@@ -114,6 +115,7 @@ ui <- fluidPage(
                            uiOutput("selectValueIfPossible"), # Here it displays different select and button depending on selectionValue
                            h3("On going table"),
                            dataTableOutput("toMergeDF"),
+                           actionButton("ResetOnGoing", "Reset on-going table"),
                            uiOutput("mergeDFIfPossible"), # Only display the button if there is new info
                            # They are integrated to the data to upload
                            h3("Remove columns from the table to upload:"),
@@ -1001,6 +1003,10 @@ server <- function(input, output) {
     my.ome$lastSelectionValue <- "split"
     my.ome$lastSelectedColumnValue <- input$selectColumnValue
     my.ome$lastSplitPosition <- input$splitPos
+  })
+  
+  observeEvent(input$ResetOnGoing, {
+    my.ome$toMerge.dataframe <- subset(my.ome$current.dataframe, select = c(id, image.name))
   })
   
   # Display the button mergeDF if appropriate
