@@ -21,6 +21,7 @@ omero.path <- "/home/ldelisle/.conda/envs/omero/bin/omero"
 # This conda environment has been created by:
 # conda create -n omero -c ome python=3.6 zeroc-ice36-python omero-py pandas
 prefix.path <- "/home/ldelisle/mountDuboule/"
+host.url <- "omero-server.epfl.ch"
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -179,7 +180,7 @@ server <- function(input, output) {
     if (my.ome$debug.mode){
       cat(file = stderr(), "login\n")
     }
-    my.ome$server <- tryCatch(connect(OMEROServer(host = "omero-server.epfl.ch", username = input$username, password = input$password, port = as.integer(4064))),
+    my.ome$server <- tryCatch(connect(OMEROServer(host = host.url, username = input$username, password = input$password, port = as.integer(4064))),
                               error = function(e) {
                                 cat(file = stderr(), str(e), "\n")
                                 NULL
