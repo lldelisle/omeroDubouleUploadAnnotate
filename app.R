@@ -437,7 +437,7 @@ server <- function(input, output) {
       } else {
         # system(paste0(omero.path, " import --depth ", input$depth, " -f \'", prefix.path, "/", input$fileOrDirToUpload, "\' 2>&1"), intern = T,
         #        ignore.stdout = F, ignore.stderr = F)
-        system(paste0(omero.path, " import --depth ", depth, " -f \'", prefix.path, "/", fileOrDirToUpload, "\'"), intern = T,
+        system(paste0(omero.path, " import --depth ", depth, " -f \'", prefix.path, "/", fileOrDirToUpload, "\' 2>&1"), intern = T,
                ignore.stdout = F, ignore.stderr = F)
       }
     })
