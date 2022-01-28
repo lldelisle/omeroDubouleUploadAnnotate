@@ -115,7 +115,7 @@ If you fill the "Input file or directory", you see a new section appearing: Uplo
 
 ![first_page_login_file](images/Screenshot_first_page_login_file.png)
 
-If you want to upload images to omero this is where you need to click but before carefully check the selected project, dataset and input file or directory.
+If you want to upload images to omero this is where you need to click but before carefully check the selected project, dataset and input file or directory. You cannot upload to a Dataset that does not belong to you.
 
 Now you need to wait because this is super long especially if you have a lot of images... As this button is yellow, hopefully, it does not block all sessions so if you want to do something else you can start a new one by opening the page in a new tab or a new window of your browser. Especially, you can open a new tab to check that you have an on going upload.
 
