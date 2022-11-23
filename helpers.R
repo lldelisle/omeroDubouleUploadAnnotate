@@ -90,7 +90,8 @@ mergeNicely <- function(mainDF, newDF, verbose) {
                       newDF[, setdiff(colnames(newDF),
                                       existing.extra.cols)], all.x = T)
     }
-    my.ids <- newDF$id
+    # Handle cases where some images have been removed
+    my.ids <- intersect(newDF$id, mainDF$id)
     for (my.col in existing.extra.cols) {
       if (verbose) {
         cat(file = stderr(), my.col, "\n")
