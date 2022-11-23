@@ -1,11 +1,11 @@
-subsetObjectByOwner <- function(listObj, owner.id){
-  owner.ids <- sapply(listObj, function(obj){
+subsetObjectByOwner <- function(listObj, owner.id) {
+  owner.ids <- sapply(listObj, function(obj) {
     obj@dataobject$getOwner()$getId()
   })
-  return(lapply(which(owner.ids == owner.id), function(i){listObj[[i]]}))
+  return(lapply(which(owner.ids == owner.id), function(i) {listObj[[i]]}))
 }
 
-parseImportOutput <- function(importOutput){
+parseImportOutput <- function(importOutput) {
   lines.with.images.ids <- grep("^Image:", importOutput)
   images.ids <- strsplit(gsub("Image:", "", importOutput[lines.with.images.ids]), ",")
   files <- sapply(strsplit(importOutput[lines.with.images.ids - 1], "Imported file: "), "[[", 2)
@@ -13,16 +13,16 @@ parseImportOutput <- function(importOutput){
   return(data.frame(id = unlist(images.ids), 'original_file' = files.rep))
 }
 
-getKeyValueDFFromImage <- function(omero.server, my.i){
+getKeyValueDFFromImage <- function(omero.server, my.i) {
   annots <- getAnnotations(my.i)
-  if(nrow(annots) > 0 && "MapAnnotationData" %in% annots$Type){
-    keyvalues <- apply(subset(annots, Type == "MapAnnotationData"), 1, function(v){
+  if (nrow(annots) > 0 && "MapAnnotationData" %in% annots$Type) {
+    keyvalues <- apply(subset(annots, Type == "MapAnnotationData"), 1, function(v) {
       loadObject(omero.server, v["Type"], v["ID"])@dataobject$getContentAsString()
     })
   } else {
     keyvalues <- NULL
   }
-  if (length(keyvalues) > 0){
+  if (length(keyvalues) > 0) {
     keyvalues <- unlist(strsplit(keyvalues, ";"))
     keyvalues.split <- strsplit(keyvalues, "=")
     values <- sapply(keyvalues.split, tail, 1)
@@ -34,11 +34,11 @@ getKeyValueDFFromImage <- function(omero.server, my.i){
   return(data.frame(key = keys, value = values))
 }
 
-initiateDF <- function(omero.server, dataset){
+initiateDF <- function(omero.server, dataset) {
   all.images <- getImages(dataset)
   # ids <- sapply(all.images, getOMEROID)
-  # names <- sapply(all.images, function(my.i){my.i@dataobject$getName()})
-  one.per.line <- do.call(rbind, lapply(all.images, function(my.i){
+  # names <- sapply(all.images, function(my.i) {my.i@dataobject$getName()})
+  one.per.line <- do.call(rbind, lapply(all.images, function(my.i) {
     # print(my.i@dataobject$getName())
     temp.df <- getKeyValueDFFromImage(omero.server, my.i)
     temp.df <- rbind(temp.df, data.frame(key = "image.name", value = my.i@dataobject$getName()))
@@ -48,8 +48,8 @@ initiateDF <- function(omero.server, dataset){
   # In OMERO it is possible to set multiple values for a single key.
   # Here we take only the first value for each key.
   # print(one.per.line)
-  agg.fun <- function(v){
-    if (length(v) == 0){
+  agg.fun <- function(v) {
+    if (length(v) == 0) {
       return(NA)
     } else {
       return(v[1])
@@ -59,40 +59,40 @@ initiateDF <- function(omero.server, dataset){
   return(summary.df)
 }
 
-mergeNicely <- function(mainDF, newDF, verbose){
-  if (! "id" %in% colnames(mainDF)){
-    if (verbose){
+mergeNicely <- function(mainDF, newDF, verbose) {
+  if (!"id" %in% colnames(mainDF)) {
+    if (verbose) {
       cat(file = stderr(), "No id in mainDF\n")
       return(mainDF)
     }
   }
-  if (! "id" %in% colnames(newDF)){
-    if (verbose){
+  if (!"id" %in% colnames(newDF)) {
+    if (verbose) {
       cat(file = stderr(), "No id in newDF\n")
       return(mainDF)
     }
   }
   extra.cols <- setdiff(colnames(newDF), c("id", "image.name"))
   existing.extra.cols <- intersect(extra.cols, colnames(mainDF))
-  if (verbose){
+  if (verbose) {
     cat(file = stderr(), "MERGE\n")
     cat(file = stderr(), extra.cols, "\n")
     cat(file = stderr(), existing.extra.cols, "\n")
   }
-  if (length(existing.extra.cols) == 0){
+  if (length(existing.extra.cols) == 0) {
     mainDF <- merge(mainDF, newDF, all.x = T)
   } else {
-    if (verbose){
+    if (verbose) {
       cat(file = stderr(), "MERGE COMMON COLS\n")
     }
-    if (length(extra.cols) > length(existing.extra.cols)){
+    if (length(extra.cols) > length(existing.extra.cols)) {
       mainDF <- merge(mainDF,
                       newDF[, setdiff(colnames(newDF),
                                       existing.extra.cols)], all.x = T)
     }
     my.ids <- newDF$id
-    for (my.col in existing.extra.cols){
-      if (verbose){
+    for (my.col in existing.extra.cols) {
+      if (verbose) {
         cat(file = stderr(), my.col, "\n")
       }
       mainDF[match(my.ids, mainDF$id), my.col] <- newDF[, my.col]
@@ -102,12 +102,12 @@ mergeNicely <- function(mainDF, newDF, verbose){
 }
 
 # This is super slow while it is super quick in python
-# getAllKeyValuesFromScratch <- function(omero.server, omero.projects){
+# getAllKeyValuesFromScratch <- function(omero.server, omero.projects) {
 #   all.datasets <- unlist(lapply(omero.projects, getDatasets))
 #   all.keyvalues <- NULL
-#   for (my.dataset in all.datasets){
+#   for (my.dataset in all.datasets) {
 #     temp.df <- unique(do.call(rbind, lapply(getImages(my.dataset),
-#                                             function(my.i){
+#                                             function(my.i) {
 #                                               getKeyValueDFFromImage(omero.server, my.i)
 #                                             }
 #                                             )
