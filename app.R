@@ -277,7 +277,9 @@ server <- function(input, output) {
                                                          " external_scripts/get_all_omero_key_values_in_yaml.py",
                                                          " --server omero-server.epfl.ch --user \'",
                                                          input$username, "\' --password \'",
-                                                         my.ome$tmp.fn.password, "\'"),
+                                                         my.ome$tmp.fn.password,
+                                                         "\' -e original_file acquisition.day",
+                                                         " acquisition.time relative.acquisition.hours"),
                                                   intern = T))
       
       if (my.ome$debug.mode) {

@@ -6,8 +6,9 @@ import argparse
 import sys
 import os
 
-def get_all_key_values(username, password, host, port):
+def get_all_key_values(username, password, host, port, exceptions):
     # Get existing key/values
+    # Except the one in exceptions
     key_values = {}
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
         # Naive version 6 times slower:
@@ -23,6 +24,10 @@ def get_all_key_values(username, password, host, port):
             ImageAnnotationLink ial
             join ial.child a
             join a.mapValue mv"""
+        if exceptions is not None:
+            query += f"""
+            where mv.name not in ('{"', '".join(exceptions)}')
+            """
         result = conn.getQueryService().projection(query, params)
         for row in result:
             k, v = [x.val for x in row]
@@ -39,6 +44,7 @@ argp.add_argument("-s", "--server", help="OMERO server hostname")
 argp.add_argument("-p", "--port", help="OMERO server port")
 argp.add_argument("-u", "--user", help="OMERO username")
 argp.add_argument("-w", "--password", help="OMERO password or file with password in first line")
+argp.add_argument("-e", "--exceptions", nargs="+", help="Keys separated by space to not include in yaml")
 argp.add_argument("-o", "--output", default=sys.stdout,
                   type=argparse.FileType('w'),
                   help="Output yaml file.")
@@ -50,5 +56,5 @@ if os.path.exists(args.password):
 else:
     password = args.password
 key_values = get_all_key_values(args.user, password,
-                                args.server, args.port)
+                                args.server, args.port, args.exceptions)
 args.output.write(dump(key_values, default_style="'"))
