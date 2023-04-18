@@ -24,7 +24,7 @@ host.url <- "omero-server.epfl.ch"
 
 # These are the columns created by get_all_key_values_per_image.py
 # That should not be uploaded to omero as key values
-columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename")
+columns.to.ignore <- c("id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename", "well.name", "plate.name", "plate.id", "screen.name")
 
 # Keys that cannot be set manually:
 protected.keys <- c(columns.to.ignore,

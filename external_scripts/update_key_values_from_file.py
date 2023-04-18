@@ -74,7 +74,7 @@ def readCSV(file, sep):
 
 
 def set_all_key_values(df, username, password, host, port, replace=False):
-    columns_to_ignore = ["id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename"]
+    columns_to_ignore = ["id", "image.name", "dataset.name", "dataset.id", "project.name", "user.omename", "well.name", "plate.name", "plate.id", "screen.name"]
     with BlitzGateway(username, password, host=host, port=port, secure=True) as conn:
         new_keys = []
         deleted_keys = []
