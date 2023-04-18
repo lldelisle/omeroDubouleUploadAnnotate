@@ -16,7 +16,6 @@ plan(multisession)
 
 source("helpers.R")
 
-file.with.all.key.values <- ""
 omero.path <- "/home/ldelisle/.conda/envs/omero/bin/omero"
 # This conda environment has been created by:
 # conda create -n omero -c ome python=3.6 zeroc-ice36-python omero-py pandas
