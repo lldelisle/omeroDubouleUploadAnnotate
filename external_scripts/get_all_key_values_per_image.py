@@ -12,9 +12,9 @@ def get_images_df(username, password, host, port, user_only, selected_project, s
         # inspired by https://gist.github.com/will-moore/12d31c026bfe5adaea4b2341494069a0#file-metadata_queries-py
         params = omero.sys.ParametersI()
         # First get the structure (image - dataset - project)
-        query1 = """select 
+        query1 = """select
     image.id, image.name, dataset.name, dataset.id, project.name, project.details.owner.id
-from 
+from
     Image image
 join image.datasetLinks d
 join d.parent dataset
@@ -22,9 +22,9 @@ join dataset.projectLinks p
 join p.parent project
 """
         # First get the structure (image - well - plate - screen)
-        query1bis = """select 
+        query1bis = """select
     image.id, image.name, w.row, w.column, plate.name, plate.id, screen.name, screen.details.owner.id
-from 
+from
     Image image
 join image.wellSamples ws
 join ws.well w
@@ -33,9 +33,9 @@ join plate.screenLinks s
 join s.parent screen
 """
         # Then get the key values
-        query2 = """select 
+        query2 = """select
     image.id, mv.name, mv.value
-from 
+from
     Image image
 join image.annotationLinks ial
 join ial.child a
@@ -139,11 +139,17 @@ where screen.id = {selected_screen}
                                         'well.name': f"{list(string.ascii_uppercase)[w_row]}{w_column + 1}" , 'plate.name': plate_name, 'plate.id':plate_id,
                                         'screen.name': screen_name}
                 if not user_only:
-                    result_dict[image_id]['user.omename'] = ids_to_name[owner_id]    
+                    result_dict[image_id]['user.omename'] = ids_to_name[owner_id]
     for row in result2:
         image_id, mv_name, mv_value = [x.val for x in row]
         # We only add key values for images
         # Which are within datasets/projects:
+        if image_id in result_dict:
+            result_dict[image_id][mv_name] = mv_value
+    for row in result2bis:
+        image_id, mv_name, mv_value = [x.val for x in row]
+        # We only add key values for images
+        # Which are within plates/screens:
         if image_id in result_dict:
             result_dict[image_id][mv_name] = mv_value
     return(pd.DataFrame([result_dict[id] for id in result_dict]))
